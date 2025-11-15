@@ -1,0 +1,338 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { GLTF } from "three/examples/jsm/loaders/GLTFLoader";
+import { RefObject } from "react";
+
+// --- Constants ---
+const NUM_BUILDINGS = 40;
+const BUILDING_SPACING_MIN = 20; // Minimum Z distance between buildings
+const BUILDING_SPACING_RANDOM = 15; // Random additional Z distance
+const SCENERY_LOOP_DISTANCE_BUILDINGS = 2000; // Total loop distance for buildings
+const SIDE_OFFSET_MIN = 8; // Minimum distance from road center - moved closer
+const SIDE_OFFSET_RANDOM = 10; // Random additional distance from road - reduced randomness
+const BUILDING_SCALE_FACTOR = 1.0; // Overall scale of buildings
+
+// Texture path
+const BUILDING_PALETTE_TEXTURE_PATH = "/textures/colormap.png";
+
+// Only sample houses as requested by user
+const SAMPLE_HOUSE_FILES = [
+    "/buildings/building-sample-house-a.glb",
+    "/buildings/building-sample-house-b.glb",
+    "/buildings/building-sample-house-c.glb"
+];
+
+interface BuildingPart {
+    name: string;
+    scene: THREE.Group; // The loaded GLTF scene for the part
+}
+
+interface BuildingInstance {
+    group: THREE.Group; // The assembled building group added to the main scene
+    initialZ: number;
+    initialX: number;
+}
+
+export class SceneryManager {
+    private scene: THREE.Scene | null = null;
+    private totalDistanceScrolledRef: RefObject<number> | null = null;
+    private level: number = 1;
+
+    private buildingPaletteTexture: THREE.Texture | null = null;
+    private loadedParts: Map<string, BuildingPart> = new Map(); // Store loaded parts by filename
+    private buildingInstances: BuildingInstance[] = [];
+
+    private gltfLoader = new GLTFLoader();
+    private textureLoader = new THREE.TextureLoader();
+    private assetsLoaded = false;
+    private buildingsCreated = false;
+    private disposalTimeoutId: NodeJS.Timeout | null = null;
+
+    // --- Initialization ---
+    async initialize(
+        scene: THREE.Scene,
+        totalDistanceScrolledRef: RefObject<number>,
+        initialLevel: number = 1
+    ) {
+        console.log("SceneryManager: Initializing...");
+        this.scene = scene;
+        this.totalDistanceScrolledRef = totalDistanceScrolledRef;
+        this.level = initialLevel;
+        this.assetsLoaded = false;
+        this.buildingsCreated = false;
+        this.loadedParts.clear();
+        this.buildingInstances = []; // Clear previous instances if re-initializing
+
+        try {
+            await this.loadAssets();
+            this.createInitialBuildings();
+        } catch (error) {
+            console.error("Failed to initialize Scenery Manager:", error);
+        }
+    }
+
+    // --- Asset Loading ---
+    private async loadAssets(): Promise<void> {
+        if (this.assetsLoaded) return;
+        console.log("SceneryManager: Loading assets...");
+
+        // Load Palette Texture
+        try {
+            this.buildingPaletteTexture = await this.textureLoader.loadAsync(
+                BUILDING_PALETTE_TEXTURE_PATH
+            );
+            this.buildingPaletteTexture.flipY = false;
+            this.buildingPaletteTexture.magFilter = THREE.NearestFilter;
+            this.buildingPaletteTexture.minFilter = THREE.NearestFilter;
+            console.log("SceneryManager: Palette texture loaded.");
+        } catch (error) {
+            console.error(
+                `SceneryManager: Failed to load palette texture ${BUILDING_PALETTE_TEXTURE_PATH}`,
+                error
+            );
+            this.buildingPaletteTexture = null;
+        }
+
+        // Create an array of promises to load each sample house
+        const loadPromises: Promise<GLTF | null>[] = [];
+        
+        // Create load promises for each sample house
+        for (const file of SAMPLE_HOUSE_FILES) {
+            const promise = this.gltfLoader.loadAsync(file)
+                .catch((err) => {
+                    console.error(`SceneryManager: Failed to load building part ${file}`, err);
+                    return null;
+                });
+            loadPromises.push(promise);
+        }
+        
+        const results = await Promise.all(loadPromises);
+        let loadedCount = 0;
+        
+        results.forEach((gltf, index) => {
+            if (gltf) {
+                loadedCount++;
+                if (this.buildingPaletteTexture) {
+                    gltf.scene.traverse((child) => {
+                        if (child instanceof THREE.Mesh && child.material) {
+                            this.applyPaletteTexture(child.material);
+                        }
+                    });
+                }
+                // Store the loaded part with the corresponding filename
+                this.loadedParts.set(SAMPLE_HOUSE_FILES[index], {
+                    name: SAMPLE_HOUSE_FILES[index],
+                    scene: gltf.scene,
+                });
+            }
+        });
+        
+        if (loadedCount === 0) {
+            console.error("SceneryManager: No sample houses loaded successfully.");
+            this.assetsLoaded = false;
+        } else {
+            this.assetsLoaded = true;
+            console.log(`SceneryManager: ${loadedCount} sample houses loaded successfully.`);
+        }
+    }
+
+    // --- Helper to apply texture ---
+    private applyPaletteTexture(
+        material: THREE.Material | THREE.Material[]
+    ): void {
+        if (!this.buildingPaletteTexture) return;
+        
+        const apply = (mat: THREE.Material) => {
+            if (
+                mat instanceof THREE.MeshStandardMaterial ||
+                mat instanceof THREE.MeshBasicMaterial ||
+                mat instanceof THREE.MeshPhysicalMaterial
+            ) {
+                mat.map = this.buildingPaletteTexture;
+                mat.needsUpdate = true;
+            }
+        };
+        
+        if (Array.isArray(material)) {
+            material.forEach(apply);
+        } else {
+            apply(material);
+        }
+    }
+
+    // --- Building Assembly (Simple Sample House Approach) ---
+    private assembleBuilding(): THREE.Group | null {
+        const building = new THREE.Group();
+        
+        // Get the list of available sample houses
+        const sampleHouseFiles = Array.from(this.loadedParts.keys());
+        
+        if (sampleHouseFiles.length === 0) {
+            console.warn("No sample houses available to assemble building.");
+            return null;
+        }
+        
+        // Select a random sample house
+        const selectedHouse = sampleHouseFiles[Math.floor(Math.random() * sampleHouseFiles.length)];
+        const houseTemplate = this.loadedParts.get(selectedHouse);
+        
+        if (!houseTemplate) {
+            console.warn(`Sample house ${selectedHouse} not found in loaded parts.`);
+            return null;
+        }
+        
+        // Clone the sample house and add to building group
+        const housePart = houseTemplate.scene.clone(true);
+        building.add(housePart);
+
+        // Apply scale factor
+        building.scale.set(BUILDING_SCALE_FACTOR, BUILDING_SCALE_FACTOR, BUILDING_SCALE_FACTOR);
+
+        // Apply shadows
+        building.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+
+        // Add flag for disposal identification
+        building.userData.isManagedBySceneryManager = true;
+
+        return building;
+    }
+
+    // --- Create Initial Buildings ---
+    private createInitialBuildings(): void {
+        if (!this.scene || this.buildingsCreated || !this.assetsLoaded) return;
+        
+        // Check if we have sample houses loaded
+        if (this.loadedParts.size === 0) {
+            console.error("SceneryManager: Cannot create buildings - no sample houses loaded.");
+            this.buildingsCreated = true; // Mark as "created" to prevent retries
+            return;
+        }
+        
+        console.log("SceneryManager: Creating initial buildings...");
+        let lastZ = 0; // Track Z position of the previously placed building
+
+        for (let i = 0; i < NUM_BUILDINGS; i++) {
+            const buildingGroup = this.assembleBuilding();
+            if (!buildingGroup) {
+                console.warn(`Failed to assemble building instance ${i}.`);
+                continue; // Skip if assembly failed
+            }
+
+            // Determine position
+            const side = Math.random() < 0.5 ? -1 : 1; // -1 for left, 1 for right
+            const initialX = side * (SIDE_OFFSET_MIN + Math.random() * SIDE_OFFSET_RANDOM);
+            
+            // Place buildings progressively further back, ensuring minimum spacing
+            const initialZ = lastZ - (BUILDING_SPACING_MIN + Math.random() * BUILDING_SPACING_RANDOM);
+            const initialY = 0; // Assuming base of building parts is at Y=0
+
+            buildingGroup.position.set(initialX, initialY, initialZ);
+            
+            // Add rotation to face the road
+            buildingGroup.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2;
+
+            // Store data needed for update loop
+            buildingGroup.userData.initialZ = initialZ;
+            buildingGroup.userData.initialX = initialX;
+            buildingGroup.userData.isManagedBySceneryManager = true;
+
+            this.scene.add(buildingGroup);
+            this.buildingInstances.push({
+                group: buildingGroup,
+                initialZ,
+                initialX,
+            });
+
+            lastZ = initialZ; // Update Z for the next building's spacing calculation
+        }
+        
+        this.buildingsCreated = true;
+        console.log(`SceneryManager: Created ${this.buildingInstances.length} building instances.`);
+    }
+
+    // --- Update Loop ---
+    public update(level: number): void {
+        if (!this.buildingsCreated || !this.totalDistanceScrolledRef?.current) {
+            return; // Not ready yet
+        }
+
+        // Update level if changed
+        if (level !== this.level) {
+            this.level = level;
+        }
+
+        const scroll = this.totalDistanceScrolledRef.current;
+
+        // Update positions based on scroll using modulo arithmetic
+        this.buildingInstances.forEach((instance) => {
+            // Calculate the position within the loop distance
+            // Add SCENERY_LOOP_DISTANCE to handle negative initialZ correctly with modulo
+            const worldZ = instance.initialZ + scroll;
+            const loopZ = ((worldZ % SCENERY_LOOP_DISTANCE_BUILDINGS) + SCENERY_LOOP_DISTANCE_BUILDINGS) % SCENERY_LOOP_DISTANCE_BUILDINGS;
+            // Position relative to the "start" of the loop which we consider far away
+            const finalZ = loopZ - SCENERY_LOOP_DISTANCE_BUILDINGS;
+
+            instance.group.position.z = finalZ;
+        });
+    }
+
+    // --- Dispose ---
+    public dispose(): void {
+        console.log("SceneryManager: Disposing...");
+        
+        // Clean up any pending timers
+        if (this.disposalTimeoutId) {
+            clearTimeout(this.disposalTimeoutId);
+            this.disposalTimeoutId = null;
+        }
+        
+        // Store references to objects we need to clean up
+        const scene = this.scene;
+        const instancesToDispose = [...this.buildingInstances];
+        
+        // Use delayed disposal to avoid issues with Three.js render loop
+        this.disposalTimeoutId = setTimeout(() => {
+            console.log("SceneryManager: Executing delayed disposal...");
+            if (scene) {
+                instancesToDispose.forEach((instance) => {
+                    scene.remove(instance.group);
+                    instance.group.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.geometry?.dispose();
+                            // Dispose materials cautiously
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(m => m.dispose());
+                            } else {
+                                child.material?.dispose();
+                            }
+                        }
+                    });
+                });
+                console.log(`SceneryManager: Disposed ${instancesToDispose.length} building meshes after delay.`);
+            }
+            this.disposalTimeoutId = null;
+        }, 4000);
+        
+        // Clear all collections
+        this.buildingInstances = [];
+        this.loadedParts.clear();
+        
+        // Dispose palette texture
+        if (this.buildingPaletteTexture) {
+            this.buildingPaletteTexture.dispose();
+            this.buildingPaletteTexture = null;
+        }
+        
+        // Reset state
+        this.assetsLoaded = false;
+        this.buildingsCreated = false;
+        this.scene = null;
+        
+        console.log("SceneryManager: Disposed.");
+    }
+}

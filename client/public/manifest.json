@@ -1,0 +1,39 @@
+{
+  "name": "FlashLingo",
+  "short_name": "FlashLingo",
+  "description": "Learn languages with AI-powered flashcards that work offline",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#4CAF50",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/clippy_working.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/clippy_working.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Create Card",
+      "url": "/create",
+      "description": "Create a new flashcard"
+    },
+    {
+      "name": "Study",
+      "url": "/study",
+      "description": "Practice flashcards"
+    }
+  ]
+}

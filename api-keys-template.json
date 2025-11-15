@@ -1,0 +1,15 @@
+{
+  "geminiApiKey": "YOUR_GEMINI_API_KEY_HERE",
+  "firebaseApiKey": "YOUR_FIREBASE_API_KEY_HERE",
+  "mistralApiKey": "YOUR_MISTRAL_API_KEY_HERE",
+  "firebaseConfig": {
+    "apiKey": "YOUR_FIREBASE_API_KEY_HERE",
+    "authDomain": "your-project.firebaseapp.com",
+    "projectId": "your-project-id",
+    "storageBucket": "your-project.firebasestorage.app",
+    "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
+    "appId": "YOUR_APP_ID",
+    "measurementId": "YOUR_MEASUREMENT_ID"
+  }
+}
+

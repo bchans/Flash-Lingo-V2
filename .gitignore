@@ -1,0 +1,23 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+*.zip
+
+# Build outputs
+electron-dist/
+electron-main.cjs
+
+# Development artifacts
+attached_assets/
+scenery_manager_dump.txt
+
+# Large language data (download on-demand)
+*.traineddata
+
+# API Keys - DO NOT COMMIT
+api-keys.json
+my-api-keys.json
+.env.local

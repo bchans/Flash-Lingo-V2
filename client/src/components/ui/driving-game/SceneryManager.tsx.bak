@@ -1,0 +1,1955 @@
+// src/SceneryManager.tsx
+
+// --- CORRECT IMPORTS for TypeScript/Three.js ---
+import * as THREE from "three";
+import { GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RefObject } from "react";
+import { FenceCreator, PerpFenceConfig } from "./FenceCreator";
+// --- END CORRECT IMPORTS ---
+
+// --- Configuration ---
+const NUM_BUILDINGS = 20;
+const NUM_TREES = 30; // Number of trees to place around the scene
+const NUM_LIGHTPOSTS = 20; // Number of lightposts to place along the boardwalk
+const PATH_OFFSET = 9.0; // Distance from road centerline to path center
+const BUILDING_FOOTPRINT_Z_ESTIMATE = 5.0;
+const SCENERY_LOOP_DISTANCE_BUILDINGS =
+    BUILDING_FOOTPRINT_Z_ESTIMATE * NUM_BUILDINGS;
+const SIDE_OFFSET_MIN = 7.5; // Balanced distance - visible but not too close to the road
+const SIDE_OFFSET_RANDOM = 0.3; // Reduced from 0.5 for more consistent placement
+const BUILDING_PART_HEIGHT_ESTIMATE = 2.0; // ESTIMATE - Height of one floor part - ADJUST!
+const BUILDING_SCALE_FACTOR = 1.5;
+const BOARDWALK_WIDTH = 4.0; // Width of the boardwalk
+const BOARDWALK_OFFSET = 8.0; // Distance from road centerline to boardwalk centerline
+const LIGHTPOST_OFFSET = 6.5; // Distance from road centerline to lightpost
+const LIGHTPOST_SPACING = 20.0; // Distance between lightposts
+
+// Standard visibility distance for all assets (for consistent line of sight)
+const STANDARD_VISIBILITY_DISTANCE = 600; // Use the same value as house implementation
+
+// Road related constants to match DrivingGameScene.tsx exactly
+const NUM_ROAD_SEGMENTS = 8; // Must match DrivingGameScene.tsx
+const ROAD_LENGTH_UNIT = 100;
+const ROAD_SEGMENT_LENGTH = ROAD_LENGTH_UNIT * 0.5; // 50 - smaller segments
+const ROAD_LOOP_DISTANCE = ROAD_SEGMENT_LENGTH * NUM_ROAD_SEGMENTS; // 400
+const REPOSITION_THRESHOLD_Z = 50; // Point to trigger loop, must match DrivingGameScene.tsx
+const FORWARD_SPEED = 0.15; // Must match DrivingGameScene.tsx exactly
+
+// X-axis perpendicular fence constants
+// Import fence configuration from FenceCreator to ensure consistent values
+import { 
+    DEFAULT_PERP_FENCE_CONFIG, 
+    PERP_FENCE_SEGMENT_SPACING,
+    PERP_FENCE_SEGMENT_COUNT, 
+    PERP_FENCE_SCALE 
+} from './FenceCreator';
+
+// --- Asset Paths (Relative to /public folder) ---
+const BUILDING_PALETTE_TEXTURE_PATH = "/textures/colormap.png";
+// Full list of parts to attempt loading
+const BUILDING_PART_FILES: string[] = [    "/buildings/window-white-wide.glb",
+    // Samples & Steps
+    "/buildings/building-edges-door.glb",
+    "/buildings/building-sample-house-a.glb",
+    "/buildings/building-sample-house-b.glb",
+    "/buildings/building-sample-house-c.glb",
+    "/buildings/building-sample-tower-a.glb",
+    "/buildings/building-sample-tower-b.glb",
+    "/buildings/building-sample-tower-c.glb",
+    "/buildings/building-sample-tower-d.glb",
+    "/buildings/building-steps-narrow.glb",
+    "/buildings/building-steps-narrow-windows.glb",
+    "/buildings/building-steps-narrow-windows-round.glb",
+    "/buildings/building-steps-wide.glb",
+];
+
+// --- EXACT Filename Lists Based on User Rules ---
+const exactGroundFloorOnlyNames: ReadonlySet<string> = new Set([
+
+
+]);
+
+const exactGroundOrMiddleFloorNames: ReadonlySet<string> = new Set([
+
+]);
+
+const exactMiddleFloorOnlyNames: ReadonlySet<string> = new Set([
+    "/buildings/building-window-balcony.glb",
+]);
+
+const exactRoofGable1x1Names: ReadonlySet<string> = new Set([
+    "/buildings/roof-gable.glb",
+]);
+
+const exactSampleBuildingNames: ReadonlySet<string> = new Set([
+    "/buildings/building-sample-house-a.glb",
+    "/buildings/building-sample-house-b.glb",
+    "/buildings/building-sample-house-c.glb",
+    "/buildings/building-sample-tower-a.glb",
+    "/buildings/building-sample-tower-b.glb",
+    "/buildings/building-sample-tower-c.glb",
+    "/buildings/building-sample-tower-d.glb",
+]);
+
+interface BuildingPart {
+    name: string;
+    scene: THREE.Group;
+}
+interface BuildingInstance {
+    group: THREE.Object3D; // Changed from THREE.Group to THREE.Object3D to support both Groups and Meshes
+    initialZ: number;
+    initialX: number;
+    userData?: {
+        updatedForLevel?: number;
+        buildingType?: string;
+        [key: string]: any;
+    };
+}
+
+export class SceneryManager {
+    private scene: THREE.Scene | null = null;
+    private totalDistanceScrolledRef: RefObject<number> | null = null;
+    private progressPercentage: number = 0;
+    private buildingPaletteTexture: THREE.Texture | null = null;
+    private loadedParts: Map<string, BuildingPart> = new Map();
+    private buildingInstances: BuildingInstance[] = [];
+    private fenceCreator: FenceCreator | null = null;
+
+    // --- Categorized part name arrays (populated by categorizeParts) ---
+    private groundFloorPartNames: string[] = [];
+    private middleFloorPartNames: string[] = []; // Combined list for random selection
+    private middleFloorBalconyNames: string[] = []; // Kept separate for specific logic/chance
+    private roof1x1PartNames: string[] = [];
+    private sampleBuildingPartNames: string[] = [];
+
+    private gltfLoader = new GLTFLoader();
+    private textureLoader = new THREE.TextureLoader();
+    private assetsLoaded = false;
+    private buildingsCreated = false;
+    private disposalTimeoutId: NodeJS.Timeout | null = null;
+
+    // --- Initialization ---
+    async initialize(
+        scene: THREE.Scene,
+        totalDistanceScrolledRef: RefObject<number>,
+        initialProgress: number = 0,
+    ) {
+        console.log("SceneryManager: Initializing...");
+        // ... (reset state as before) ...
+        this.scene = scene;
+        this.totalDistanceScrolledRef = totalDistanceScrolledRef;
+        this.progressPercentage = initialProgress;
+        this.assetsLoaded = false;
+        this.buildingsCreated = false;
+        this.loadedParts.clear();
+        this.buildingInstances = [];
+        if (this.disposalTimeoutId) clearTimeout(this.disposalTimeoutId);
+        
+        // Initialize the FenceCreator
+        this.fenceCreator = new FenceCreator(scene, this.buildingInstances, SCENERY_LOOP_DISTANCE_BUILDINGS);
+
+        try {
+            await this.loadAssets();
+            if (this.assetsLoaded && this.loadedParts.size > 0) {
+                this.categorizeParts(); // Use EXACT lists now
+                this.createInitialBuildings();
+
+                // Add benches, foliage, boardwalk and lightposts to enhance the scene
+                this.createBenchesAlongRoad();
+                this.createFoliageAroundBuildings();
+                this.createBoardwalk();
+                this.createLightposts();
+            } else {
+                console.warn(
+                    "SceneryManager: Initialization skipped - asset loading incomplete.",
+                );
+            }
+        } catch (error) {
+            console.error(
+                "SceneryManager: Initialization failed critically.",
+                error,
+            );
+            throw error; // Propagate critical errors
+        }
+    }
+
+    // --- Asset Loading (Keep robust version) ---
+    private async loadAssets(): Promise<void> {
+        if (this.assetsLoaded) return;
+        console.log("SceneryManager: Loading assets...");
+        // Load Palette Texture
+        try {
+            console.log(
+                `SceneryManager: Attempting to load palette texture from ${BUILDING_PALETTE_TEXTURE_PATH}`,
+            );
+            this.buildingPaletteTexture = await this.textureLoader.loadAsync(
+                BUILDING_PALETTE_TEXTURE_PATH,
+            );
+            this.buildingPaletteTexture.flipY = false;
+            this.buildingPaletteTexture.magFilter = THREE.NearestFilter;
+            this.buildingPaletteTexture.minFilter = THREE.NearestFilter;
+            console.log("SceneryManager: Palette texture loaded successfully.");
+        } catch (error) {
+            console.error(
+                `SceneryManager: WARNING - Failed to load palette texture ${BUILDING_PALETTE_TEXTURE_PATH}. Buildings may be untextured.`,
+                error,
+            );
+            this.buildingPaletteTexture = null;
+        }
+        // Load Building Part GLBs
+        if (
+            !Array.isArray(BUILDING_PART_FILES) ||
+            BUILDING_PART_FILES.length === 0
+        ) {
+            console.error("SceneryManager: BUILDING_PART_FILES is invalid.");
+            this.assetsLoaded = true;
+            return;
+        }
+        console.log(
+            `SceneryManager: Attempting to load ${BUILDING_PART_FILES.length} building parts...`,
+        );
+
+        // Create an array of promises to load each building part file
+        const loadPromises: Promise<GLTF | null>[] = [];
+
+        // Load both house and tower assets for different game stages
+        // Houses for first half of the game, towers for second half
+        const sampleHouseFiles = [
+            "/buildings/building-sample-house-a.glb",
+            "/buildings/building-sample-house-b.glb",
+            "/buildings/building-sample-house-c.glb",
+            "/buildings/building-sample-tower-a.glb",
+            "/buildings/building-sample-tower-b.glb",
+            "/buildings/building-sample-tower-c.glb",
+            "/buildings/building-sample-tower-d.glb",
+        ];
+
+        // Create load promises for each sample house
+        for (const file of sampleHouseFiles) {
+            const promise = this.gltfLoader.loadAsync(file).catch((err) => {
+                console.error(
+                    `SceneryManager: Failed to load building part ${file}`,
+                    err,
+                );
+                return null;
+            });
+            loadPromises.push(promise);
+        }
+
+        const results = await Promise.all(loadPromises);
+        let loadedCount = 0;
+        results.forEach((gltf, index) => {
+            if (gltf) {
+                loadedCount++;
+                if (this.buildingPaletteTexture) {
+                    gltf.scene.traverse((child) => {
+                        if (child instanceof THREE.Mesh && child.material) {
+                            // Apply texture directly without using the applyPaletteTexture method
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => {
+                                    if (mat instanceof THREE.MeshStandardMaterial && !mat.map && this.buildingPaletteTexture) {
+                                        mat.map = this.buildingPaletteTexture;
+                                        mat.needsUpdate = true;
+                                    }
+                                });
+                            } else if (child.material instanceof THREE.MeshStandardMaterial && !child.material.map && this.buildingPaletteTexture) {
+                                child.material.map = this.buildingPaletteTexture;
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                    });
+                }
+                // Store the loaded part with the corresponding filename
+                this.loadedParts.set(sampleHouseFiles[index], {
+                    name: sampleHouseFiles[index],
+                    scene: gltf.scene,
+                });
+            }
+        });
+        if (loadedCount === 0 && BUILDING_PART_FILES.length > 0) {
+            this.assetsLoaded = false;
+            console.error(
+                "SceneryManager: CRITICAL - No building parts geometry loaded.",
+            );
+        } else {
+            this.assetsLoaded = true;
+        }
+        console.log(
+            `SceneryManager: ${loadedCount} / ${BUILDING_PART_FILES.length} building parts processed.`,
+        );
+    }
+
+    // --- Helper to apply texture (Keep as is) ---
+    private applyPaletteTexture(
+        material: THREE.Material | THREE.Material[],
+    ): void {
+        if (!this.buildingPaletteTexture) return;
+        const apply = (mat: THREE.Material) => {
+            if (
+                mat instanceof THREE.MeshStandardMaterial ||
+                mat instanceof THREE.MeshBasicMaterial ||
+                mat instanceof THREE.MeshPhysicalMaterial
+            ) {
+                if (!mat.map) {
+                    mat.map = this.buildingPaletteTexture;
+                    mat.needsUpdate = true;
+                }
+            }
+        };
+        if (Array.isArray(material)) {
+            material.forEach(apply);
+        } else {
+            apply(material);
+        }
+    }
+
+    // --- CORRECTED Part Categorization using EXACT lists ---
+    private categorizeParts(): void {
+        this.groundFloorPartNames = [];
+        this.middleFloorPartNames = [];
+        this.middleFloorBalconyNames = [];
+        this.roof1x1PartNames = [];
+        this.sampleBuildingPartNames = [];
+
+        // Iterate through the parts that were actually loaded successfully
+        const loadedKeys = Array.from(this.loadedParts.keys());
+
+        // First, log what's actually loaded to debug file loading issues
+        console.log(`TOWER DEBUG: Loaded keys: ${loadedKeys.join(", ")}`);
+
+        // Check if tower files exist on disk but aren't loaded into the loadedParts map
+        const towerBuildingPaths = [
+            "/buildings/building-sample-tower-a.glb",
+            "/buildings/building-sample-tower-b.glb",
+            "/buildings/building-sample-tower-c.glb",
+            "/buildings/building-sample-tower-d.glb",
+        ];
+
+        console.log(`TOWER DEBUG: Looking specifically for tower models...`);
+        // Force load tower buildings if they haven't been loaded yet
+        for (const towerPath of towerBuildingPaths) {
+            if (!this.loadedParts.has(towerPath)) {
+                console.log(
+                    `TOWER DEBUG: Tower model ${towerPath} not found in loaded parts. Attempting to load it now.`,
+                );
+                // Try to load it now
+                this.gltfLoader.load(
+                    towerPath,
+                    (gltf) => {
+                        console.log(
+                            `TOWER DEBUG: Successfully loaded tower model ${towerPath}`,
+                        );
+                        this.loadedParts.set(towerPath, {
+                            name: towerPath,
+                            scene: gltf.scene,
+                        });
+                        // Also add it to sample buildings immediately
+                        this.sampleBuildingPartNames.push(towerPath);
+                    },
+                    undefined,
+                    (error) => {
+                        console.error(
+                            `TOWER DEBUG: Failed to load tower model ${towerPath}`,
+                            error,
+                        );
+                    },
+                );
+            } else {
+                console.log(
+                    `TOWER DEBUG: Tower model ${towerPath} already loaded.`,
+                );
+                // Make sure it's in the sample buildings list
+                this.sampleBuildingPartNames.push(towerPath);
+            }
+        }
+
+        // Continue with normal categorization for all other parts
+        for (const name of loadedKeys) {
+            if (exactGroundFloorOnlyNames.has(name)) {
+                this.groundFloorPartNames.push(name);
+            } else if (exactGroundOrMiddleFloorNames.has(name)) {
+                // Add to the general middle floor list (can also be ground, but modular assembly uses specific ground list first)
+                this.middleFloorPartNames.push(name);
+            } else if (exactMiddleFloorOnlyNames.has(name)) {
+                this.middleFloorBalconyNames.push(name);
+                // Also add balconies to the general middle list so they can be picked randomly
+                this.middleFloorPartNames.push(name);
+            } else if (exactRoofGable1x1Names.has(name)) {
+                this.roof1x1PartNames.push(name);
+            } else if (exactSampleBuildingNames.has(name)) {
+                // Ensure no duplicates in sample building names
+                if (!this.sampleBuildingPartNames.includes(name)) {
+                    this.sampleBuildingPartNames.push(name);
+                }
+            }
+            // Ignore parts not in any exact list (like corners, details, other roofs for now)
+        }
+
+        // Log all categorized parts with additional tower model info
+        const towerModels = this.sampleBuildingPartNames.filter((name) =>
+            name.includes("tower"),
+        );
+        console.log(
+            `Categorized parts: ${this.groundFloorPartNames.length} ground, ${this.middleFloorPartNames.length} middle (incl ${this.middleFloorBalconyNames.length} balconies), ${this.roof1x1PartNames.length} roof1x1, ${this.sampleBuildingPartNames.length} samples (including ${towerModels.length} towers).`,
+        );
+
+        // Log the actual tower models found
+        console.log(
+            `TOWER DEBUG: Tower models found: ${towerModels.join(", ")}`,
+        );
+
+        // Check if assembly is possible
+        if (
+            this.groundFloorPartNames.length === 0 ||
+            this.middleFloorPartNames.length === 0 ||
+            this.roof1x1PartNames.length === 0
+        ) {
+            console.warn(
+                "SceneryManager: Missing essential parts for MODULAR assembly based on exact lists.",
+            );
+        }
+        if (this.sampleBuildingPartNames.length === 0) {
+            console.warn(
+                "SceneryManager: No sample buildings loaded based on exact lists.",
+            );
+        }
+    }
+
+    // --- Main Assembly Function (Always uses sample buildings) ---
+    private assembleBuilding(): THREE.Group | null {
+        // Since we only use sample buildings, simplify to a single method
+        if (this.sampleBuildingPartNames.length === 0) {
+            console.error("Cannot assemble building: No sample parts loaded");
+            return null;
+        }
+
+        const building = new THREE.Group();
+
+        // Select building type based on user progress (50% threshold)
+        // First 50% of cards: Houses only
+        // Second 50% of cards: Tower models
+        const isSecondHalf = this.progressPercentage >= 50;
+
+        console.log(
+            `BUILDING ASSEMBLY: Creating building - isSecondHalf=${isSecondHalf}, progressPercentage=${this.progressPercentage}%`,
+        );
+
+        // Filter available buildings based on progress
+        const availableBuildingNames = this.sampleBuildingPartNames.filter(
+            (name) => {
+                const isTower = name.includes("tower");
+                
+                // If in second half, only use tower models
+                // If in first half, only use house models
+                return isSecondHalf ? isTower : !isTower;
+            },
+        );
+
+        if (availableBuildingNames.length === 0) {
+            console.warn(
+                `BUILDING ASSEMBLY: No suitable buildings for current progress: ${this.progressPercentage}%. Falling back to any sample building.`,
+            );
+            
+            // Fall back to any sample building if no suitable ones are found
+            const randomIndex = Math.floor(
+                Math.random() * this.sampleBuildingPartNames.length,
+            );
+            const fallbackName = this.sampleBuildingPartNames[randomIndex];
+            console.log(`BUILDING ASSEMBLY: Falling back to ${fallbackName}`);
+            
+            const part = this.loadedParts.get(fallbackName);
+            if (part && part.scene) {
+                const clonedScene = part.scene.clone();
+                building.add(clonedScene);
+            } else {
+                return null; // No suitable buildings found
+            }
+        } else {
+            // Pick a random available building
+            const randomIndex = Math.floor(
+                Math.random() * availableBuildingNames.length,
+            );
+            const selectedName = availableBuildingNames[randomIndex];
+
+            console.log(
+                `BUILDING ASSEMBLY: Selected ${selectedName} from ${availableBuildingNames.length} matching buildings`,
+            );
+
+            // Get the loaded part and add to building
+            const part = this.loadedParts.get(selectedName);
+            if (part && part.scene) {
+                const clonedScene = part.scene.clone();
+                building.add(clonedScene);
+            } else {
+                console.error(`Part not found for ${selectedName}`);
+                return null;
+            }
+        }
+        
+        // Apply building palette texture if available
+        if (this.buildingPaletteTexture) {
+            // Apply texture directly to materials without using the applyPaletteTexture function
+            building.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(mat => {
+                            if (mat instanceof THREE.MeshStandardMaterial && !mat.map) {
+                                mat.map = this.buildingPaletteTexture;
+                                mat.needsUpdate = true;
+                            }
+                        });
+                    } else if (child.material instanceof THREE.MeshStandardMaterial && !child.material.map) {
+                        child.material.map = this.buildingPaletteTexture;
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+        }
+
+        // Apply scaling and shadows
+        building.scale.set(
+            BUILDING_SCALE_FACTOR,
+            BUILDING_SCALE_FACTOR,
+            BUILDING_SCALE_FACTOR,
+        );
+        building.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        building.userData.isManagedBySceneryManager = true;
+        
+        return building;
+    }
+
+    // Other building assembly methods were removed since we're only using sample buildings
+    // This approach centralizes all building assembly logic in the assembleBuilding method
+
+    // --- Create Initial Pool (Simplified for sample houses only) ---
+    private createInitialBuildings(): void {
+        if (!this.scene || this.buildingsCreated || !this.assetsLoaded) return;
+
+        // Check if we have sample houses to use for the first 50% of the game
+        if (this.sampleBuildingPartNames.length === 0) {
+            console.error(
+                "SceneryManager: Cannot create buildings - no sample houses available.",
+            );
+            this.buildingsCreated = true;
+            return;
+        }
+
+        // Ensure we have parts for tower buildings in the second 50% of the game
+        if (
+            this.groundFloorPartNames.length === 0 ||
+            this.middleFloorPartNames.length === 0 ||
+            this.roof1x1PartNames.length === 0
+        ) {
+            console.warn(
+                "SceneryManager: Missing building parts for tower buildings - will use sample houses only.",
+            );
+        }
+        console.log("SceneryManager: Creating initial buildings in rows...");
+
+        // Track placed building positions for minimum distance check
+        const placedBuildings: { x: number; z: number; side: number }[] = [];
+
+        // Minimum distance between buildings on the same side
+        const MIN_BUILDING_DISTANCE = BUILDING_FOOTPRINT_Z_ESTIMATE + 12; // Building size plus buffer
+
+        let lastZ = 0;
+
+        // Set optimal distance from road (not too close, not too far)
+        const OPTIMAL_MIN_DISTANCE = 16; // Optimal minimum distance from road centerline
+        const OPTIMAL_MAX_DISTANCE = 22; // Optimal maximum distance from road centerline
+
+        for (let i = 0; i < NUM_BUILDINGS; i++) {
+            const buildingGroup = this.assembleBuilding(); // Uses new logic
+            if (!buildingGroup) continue;
+
+            // Alternate sides of the road
+            const side = i % 2 === 0 ? -1 : 1;
+
+            // Use optimal distance range for better visibility
+            const initialX =
+                side *
+                (OPTIMAL_MIN_DISTANCE +
+                    Math.random() *
+                        (OPTIMAL_MAX_DISTANCE - OPTIMAL_MIN_DISTANCE));
+
+            // Generate a potential position with consistent gaps
+            let initialZ =
+                lastZ - (BUILDING_FOOTPRINT_Z_ESTIMATE + 8 + Math.random() * 4);
+
+            // Check distance to all previously placed buildings on the same side
+            const sameSlideBuildings = placedBuildings.filter(
+                (b) => b.side === side,
+            );
+            let tooClose = false;
+
+            // If there are buildings on the same side, check distance
+            if (sameSlideBuildings.length > 0) {
+                // Try up to 5 times to find a position that's not too close
+                let attempts = 0;
+                const MAX_ATTEMPTS = 5;
+
+                do {
+                    tooClose = false;
+
+                    // Check distance to each existing building on the same side
+                    for (const building of sameSlideBuildings) {
+                        const distance = Math.abs(building.z - initialZ);
+                        if (distance < MIN_BUILDING_DISTANCE) {
+                            tooClose = true;
+                            // Move further back to avoid overlap
+                            initialZ = initialZ - MIN_BUILDING_DISTANCE / 2;
+                            break;
+                        }
+                    }
+
+                    attempts++;
+                } while (tooClose && attempts < MAX_ATTEMPTS);
+
+                if (tooClose) {
+                    console.log(
+                        `SceneryManager: Could not place building ${i} without overlap after ${MAX_ATTEMPTS} attempts.`,
+                    );
+                }
+            }
+
+            // Add to the list of placed buildings
+            placedBuildings.push({
+                x: initialX,
+                z: initialZ,
+                side: side,
+            });
+
+            // Position and orient the building
+            buildingGroup.position.set(initialX, 0, initialZ);
+            buildingGroup.rotation.y = side === -1 ? Math.PI / 2 : -Math.PI / 2; // Face road
+
+            // Store metadata
+            buildingGroup.userData.initialZ = initialZ;
+            buildingGroup.userData.initialX = initialX;
+            buildingGroup.userData.buildingType = "sample"; // Mark as sample house
+            buildingGroup.userData.isManagedBySceneryManager = true;
+
+            // Add to scene
+            this.scene.add(buildingGroup);
+
+            // Create a road from the house to the boardwalk
+            this.createRoadFromHouseToBoardwalk(initialX, initialZ, side);
+
+            // Store instance
+            const buildingInstance = {
+                group: buildingGroup,
+                initialZ,
+                initialX,
+                userData: {
+                    buildingType: "sample",
+                },
+            };
+            this.buildingInstances.push(buildingInstance);
+
+            // Fence system removed as requested
+
+            lastZ = initialZ;
+        }
+        this.buildingsCreated = true;
+        console.log(
+            `SceneryManager: Created ${this.buildingInstances.length} building instances.`,
+        );
+    }
+
+    // --- Update Loop (Keep as is) ---
+    // --- Create benches along both sides of the road ---
+    private createBenchesAlongRoad(): void {
+        if (!this.scene) return;
+        console.log("SceneryManager: Creating benches next to lightposts...");
+
+        // Load the bench model
+        this.gltfLoader.load("/buildings/bench.glb", (gltf) => {
+            // Use the SHARED texture loader instance from the class
+            const treeTexture = this.textureLoader.load(
+                "/textures/colormaptree.png",
+                // Success callback
+                () =>
+                    console.log(
+                        "Bench Texture: colormaptree.png loaded successfully via shared loader.",
+                    ),
+                undefined, // onProgress
+                (err) =>
+                    console.error(
+                        "Bench Texture: FAILED to load colormaptree.png via shared loader!",
+                        err,
+                    ),
+            );
+
+            // Ensure texture properties are set consistently (match lightpost)
+            treeTexture.flipY = false;
+            treeTexture.magFilter = THREE.NearestFilter;
+            treeTexture.minFilter = THREE.NearestFilter;
+
+            // Create bench instances along both sides of the road next to lightposts
+            for (let i = 0; i < NUM_LIGHTPOSTS; i++) {
+                // Use same spacing as lightposts
+                const zPos = -i * LIGHTPOST_SPACING;
+
+                // Left side bench
+                const leftBench = gltf.scene.clone();
+                leftBench.scale.set(1, 1, 1); // Match lightpost scale
+
+                // Right side bench
+                const rightBench = gltf.scene.clone();
+                rightBench.scale.set(2, 2, 2); // Match lightpost scale
+
+                // Apply texture to benches using same pattern as lightposts
+                leftBench.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (
+                            child.material instanceof THREE.MeshStandardMaterial
+                        ) {
+                            child.material = child.material.clone();
+                            child.material.map = treeTexture;
+                            child.material.needsUpdate = true;
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                rightBench.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (
+                            child.material instanceof THREE.MeshStandardMaterial
+                        ) {
+                            child.material = child.material.clone();
+                            child.material.map = treeTexture;
+                            child.material.needsUpdate = true;
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                // Position the benches along the road next to lightposts (slightly offset from them)
+                // Lightposts are at -LIGHTPOST_OFFSET and LIGHTPOST_OFFSET
+                const benchOffsetX = 3; // Offset from lightpost
+                leftBench.position.set(
+                    -LIGHTPOST_OFFSET - benchOffsetX,
+                    0,
+                    zPos,
+                );
+                leftBench.rotation.y = Math.PI / 2; // Rotate 90 degrees to face the road
+
+                rightBench.position.set(
+                    LIGHTPOST_OFFSET + benchOffsetX,
+                    0,
+                    zPos,
+                );
+                rightBench.rotation.y = -Math.PI / 2; // Rotate -90 degrees to face the road
+
+                // Store metadata for animation and visibility using same pattern as lightposts
+                leftBench.userData = {
+                    initialZ: zPos,
+                    type: "bench",
+                    initialX: -LIGHTPOST_OFFSET - benchOffsetX,
+                    useDirectPositionUpdate: true,
+                    visibilityDistance: 600,
+                    repositionThreshold: REPOSITION_THRESHOLD_Z,
+                    loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                };
+                rightBench.userData = {
+                    initialZ: zPos,
+                    type: "bench",
+                    initialX: LIGHTPOST_OFFSET + benchOffsetX,
+                    useDirectPositionUpdate: true,
+                    visibilityDistance: 600,
+                    repositionThreshold: REPOSITION_THRESHOLD_Z,
+                    loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                };
+
+                // Add to scene
+                if (this.scene) {
+                    this.scene.add(leftBench);
+                    this.scene.add(rightBench);
+                }
+
+                // Store in building instances for animation with same pattern as lightposts
+                this.buildingInstances.push({
+                    group: leftBench,
+                    initialZ: zPos,
+                    initialX: -LIGHTPOST_OFFSET - benchOffsetX,
+                    userData: {
+                        type: "bench",
+                        useDirectPositionUpdate: true,
+                        visibilityDistance: 600,
+                        repositionThreshold: REPOSITION_THRESHOLD_Z,
+                        loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                    },
+                });
+
+                this.buildingInstances.push({
+                    group: rightBench,
+                    initialZ: zPos,
+                    initialX: LIGHTPOST_OFFSET + benchOffsetX,
+                    userData: {
+                        type: "bench",
+                        useDirectPositionUpdate: true,
+                        visibilityDistance: 600,
+                        repositionThreshold: REPOSITION_THRESHOLD_Z,
+                        loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                    },
+                });
+            }
+
+            console.log(
+                `SceneryManager: Created ${NUM_LIGHTPOSTS * 2} benches next to lightposts.`,
+            );
+        });
+    }
+
+    // --- Create boardwalk along both sides of the road ---
+    private createBoardwalk(): void {
+        if (!this.scene) return;
+        console.log("SceneryManager: Creating boardwalk along the road...");
+
+        // Create a boardwalk (sidewalk) on both sides of the road
+        // Uses EXACTLY the same creation, dimensions and recycling logic as the road
+        // to ensure perfect synchronization
+
+        // Create grid texture procedurally
+        const gridCanvas = document.createElement("canvas");
+        gridCanvas.width = 256;
+        gridCanvas.height = 256;
+        const ctx = gridCanvas.getContext("2d");
+        if (ctx) {
+            // Fill base color (grey)
+            ctx.fillStyle = "#808080";
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Draw grid lines (black)
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 2;
+
+            // Draw vertical lines
+            for (let x = 0; x <= 256; x += 32) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 256);
+                ctx.stroke();
+            }
+
+            // Draw horizontal lines
+            for (let y = 0; y <= 256; y += 32) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(256, y);
+                ctx.stroke();
+            }
+        }
+
+        const gridTexture = new THREE.CanvasTexture(gridCanvas);
+        gridTexture.wrapS = THREE.RepeatWrapping;
+        gridTexture.wrapT = THREE.RepeatWrapping;
+        gridTexture.repeat.set(4, 1); // More tile repetitions along width
+
+        // Create boardwalk segments with same dimensions as road segments
+        const boardwalkGeometry = new THREE.PlaneGeometry(
+            BOARDWALK_WIDTH,
+            ROAD_SEGMENT_LENGTH,
+        );
+
+        const boardwalkMaterial = new THREE.MeshStandardMaterial({
+            map: gridTexture,
+            roughness: 0.9,
+            metalness: 0.1,
+            side: THREE.DoubleSide,
+        });
+
+        // CRITICAL: Match road segment configuration EXACTLY - same number and size
+        const NUM_SEGMENTS = NUM_ROAD_SEGMENTS; // Using the same number of segments as the road (8)
+
+        // Create tracking arrays for boardwalk segments
+        const boardwalkSegments = [];
+
+        // Create exactly the same pattern of segments as the road
+        for (let i = 0; i < NUM_SEGMENTS; i++) {
+            // Calculate initial placement matching road segments exactly - MUST MATCH road placement logic
+            const placementZ =
+                -ROAD_SEGMENT_LENGTH / 2 - i * ROAD_SEGMENT_LENGTH;
+
+            // Left side boardwalk - wrapped in Group to fix type issues
+            const leftBoardwalkMesh = new THREE.Mesh(
+                boardwalkGeometry,
+                boardwalkMaterial.clone(),
+            );
+            leftBoardwalkMesh.rotation.x = -Math.PI / 2; // Same rotation as road
+            leftBoardwalkMesh.position.set(0, 0, 0);
+            leftBoardwalkMesh.receiveShadow = true;
+
+            // Create a group to hold the mesh
+            const leftBoardwalk = new THREE.Group();
+            leftBoardwalk.position.set(-BOARDWALK_OFFSET, 0.02, placementZ);
+            leftBoardwalk.add(leftBoardwalkMesh);
+
+            // Right side boardwalk - wrapped in Group to fix type issues
+            const rightBoardwalkMesh = new THREE.Mesh(
+                boardwalkGeometry,
+                boardwalkMaterial.clone(),
+            );
+            rightBoardwalkMesh.rotation.x = -Math.PI / 2; // Same rotation as road
+            rightBoardwalkMesh.position.set(0, 0, 0);
+            rightBoardwalkMesh.receiveShadow = true;
+
+            // Create a group to hold the mesh
+            const rightBoardwalk = new THREE.Group();
+            rightBoardwalk.position.set(BOARDWALK_OFFSET, 0.02, placementZ);
+            rightBoardwalk.add(rightBoardwalkMesh);
+
+            // Add to scene
+            this.scene.add(leftBoardwalk);
+            this.scene.add(rightBoardwalk);
+
+            // Store for tracking
+            boardwalkSegments.push(leftBoardwalk);
+            boardwalkSegments.push(rightBoardwalk);
+
+            // Store in building instances for animation
+            // CRITICAL: Just like road segments, these do NOT use initialZ - they use direct position control
+            this.buildingInstances.push({
+                group: leftBoardwalk,
+                initialZ: placementZ, // Store but won't be used for offset calculation
+                initialX: -BOARDWALK_OFFSET,
+                userData: {
+                    type: "boardwalk",
+                    side: "left",
+                    // Using direct position update, matching road segment update logic
+                    useDirectPositionUpdate: true, // Flag for custom update logic
+                    repositionThreshold: REPOSITION_THRESHOLD_Z, // Exact match with road
+                    loopDistance: ROAD_LOOP_DISTANCE, // Exact match with road
+                },
+            });
+
+            // Right side
+            this.buildingInstances.push({
+                group: rightBoardwalk,
+                initialZ: placementZ, // Store but won't be used for offset calculation
+                initialX: BOARDWALK_OFFSET,
+                userData: {
+                    type: "boardwalk",
+                    side: "right",
+                    // Using direct position update, matching road segment update logic
+                    useDirectPositionUpdate: true, // Flag for custom update logic
+                    repositionThreshold: REPOSITION_THRESHOLD_Z, // Exact match with road
+                    loopDistance: ROAD_LOOP_DISTANCE, // Exact match with road
+                },
+            });
+        }
+
+        console.log(
+            `SceneryManager: Created ${NUM_SEGMENTS * 2} boardwalk segments with exact road behavior.`,
+        );
+    }
+
+    // Create a road from a house to the boardwalk
+    // Constants for road model
+    private readonly ROAD_MODEL_DEFAULT_LENGTH = 1.0; // Estimated length of road.glb along its main axis before scaling
+    private readonly ROAD_MODEL_Y_OFFSET = 0.01; // Slight vertical offset for the road path model
+
+    // Fence system has been completely removed as requested
+    // Create a road from a house to the boardwalk
+
+    private createRoadFromHouseToBoardwalk(
+        houseX: number,
+        houseZ: number,
+        side: number, // -1 for left, 1 for right
+    ): void {
+        if (!this.scene) return;
+        
+        // Only create fence for 30% of houses
+        const shouldCreateFence = Math.random() < 0.3;
+        
+        // Load the fence gate model only if a fence should be created
+        if (shouldCreateFence) {
+            this.gltfLoader.load("/buildings/fence-gate.glb", (gateGltf) => {
+            // Create gate at boardwalk intersection
+            const boardwalkEdgeX = side * PATH_OFFSET;
+            const gate = gateGltf.scene.clone();
+            
+            // Create perpendicular fence AFTER fence gate is loaded
+            // This ensures perpendicular fence is positioned relative to the gate
+            if (this.fenceCreator) {
+                // Now we have the gate position, use it to position perpendicular fence
+                this.fenceCreator.createConnectedPerpFence(
+                    boardwalkEdgeX, // Use gate's X position instead of house position
+                    houseZ,
+                    side,
+                    {
+                        xAxisOffset: 0.0, // Not used - handled by side-specific constants
+                        zAxisOffset: 0.0, // Not used - handled by side-specific constants
+                        segmentSpacing: PERP_FENCE_SEGMENT_SPACING, // Fence segment spacing (adjustable)
+                        segmentsPerFence: PERP_FENCE_SEGMENT_COUNT, // Number of segments per fence (adjustable)
+                        fenceScale: PERP_FENCE_SCALE // Scale for fence segments (adjustable)
+                    }
+                );
+            }
+            
+            // Apply texture to gate
+            const gateTexture = this.textureLoader.load(
+                "/textures/colormaptree.png",
+                () => console.log("Fence Gate Texture: loaded successfully"),
+            );
+            gateTexture.flipY = false;
+            gateTexture.magFilter = THREE.NearestFilter;
+            gateTexture.minFilter = THREE.NearestFilter;
+
+            gate.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material) {
+                    if (child.material instanceof THREE.MeshStandardMaterial) {
+                        child.material = child.material.clone();
+                        child.material.map = gateTexture;
+                        child.material.needsUpdate = true;
+                    }
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            // Position and scale the gate
+            gate.position.set(boardwalkEdgeX, 0, houseZ);
+            gate.scale.set(1.5, 1.5, 1.5);
+            gate.rotation.y = Math.PI / 2 * -side; // Face the path
+            
+            this.scene?.add(gate);
+            console.log(`FENCE GATE: Placed at exact boardwalk edge x=${boardwalkEdgeX.toFixed(2)}, z=${houseZ.toFixed(2)}`);
+
+            // Add fence segments on both sides of path
+            this.gltfLoader.load("/buildings/fence.glb", (fenceGltf) => {
+                const fenceTexture = this.textureLoader.load(
+                    "/textures/colormaptree.png",
+                    () => console.log("Fence Segment Texture: loaded successfully"),
+                );
+                fenceTexture.flipY = false;
+                fenceTexture.magFilter = THREE.NearestFilter;
+                fenceTexture.minFilter = THREE.NearestFilter;
+
+                // Place fence segments extending from gate
+                // --------- CONFIGURABLE CONSTANTS ---------
+                // Constants for fence placement
+                const FENCE_SPACING_Z = 3.2; // Spacing between parallel segments along Z-axis
+                const FENCE_SEGMENT_LENGTH = 6.0; // Estimated length of fence segments
+                const FENCE_SCALE = 1.5; // Scale applied to all fence segments
+                
+                // Z-axis fence gate segments (before and after gate)
+                const FENCE_GATE_Z_GAP = 1.0; // Gap between fence segments along Z-axis at the gate
+                
+                // Perpendicular fence segments at house end
+                const PERP_FENCE_LEFT_X_OFFSET = 1.5; // X offset for left side perpendicular fences (user adjustable)
+                const PERP_FENCE_RIGHT_X_OFFSET = 1.5; // X offset for right side perpendicular fences (user adjustable)
+                const PERP_FENCE_Z_OFFSET = 3.2; // Distance to push perpendicular fences outward along Z
+                // -------------------------------------
+
+                // Calculate distance from boardwalk to house
+                const pathLength = Math.abs(houseX - boardwalkEdgeX);
+                const numSegmentsNeeded = Math.ceil(pathLength / FENCE_SEGMENT_LENGTH) + 1;
+                
+                // Function to apply texture to fence segments
+                const applyFenceTexture = (segment: THREE.Group) => {
+                    segment.traverse((child) => {
+                        if (child instanceof THREE.Mesh && child.material) {
+                            if (child.material instanceof THREE.MeshStandardMaterial) {
+                                child.material = child.material.clone();
+                                child.material.map = fenceTexture;
+                                child.material.needsUpdate = true;
+                            }
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                };
+                
+                // Function to store fence segment for animation
+                const storeFenceSegment = (segment: THREE.Group, posX: number, posZ: number, fenceType: string = "fence") => {
+                    this.scene?.add(segment);
+                    
+                    // Store for animation
+                    this.buildingInstances.push({
+                        group: segment,
+                        initialZ: posZ,
+                        initialX: posX,
+                        userData: {
+                            type: fenceType,
+                            useDirectPositionUpdate: false,
+                            visibilityDistance: 400,
+                            loopDistance: SCENERY_LOOP_DISTANCE_BUILDINGS,
+                        }
+                    });
+                };
+                
+                // 1. Create fence segments before and after the gate (along Z-axis)
+                // Add 2 segments on each side of the fence gate
+                for (let zOffset = -FENCE_GATE_Z_GAP*2; zOffset <= FENCE_GATE_Z_GAP*2; zOffset += FENCE_GATE_Z_GAP) {
+                    // Skip the segment at the gate's exact position (0)
+                    if (Math.abs(zOffset) < 0.1) continue;
+                    
+                    const fenceSegment = fenceGltf.scene.clone();
+                    applyFenceTexture(fenceSegment);
+                    
+                    // Position and scale the fence segment along Z-axis
+                    fenceSegment.position.set(boardwalkEdgeX, 0, houseZ + zOffset);
+                    fenceSegment.scale.set(FENCE_SCALE, FENCE_SCALE, FENCE_SCALE);
+                    fenceSegment.rotation.y = Math.PI / 2 * -side; // Align with the path direction
+                    
+                    // Add to scene and track
+                    storeFenceSegment(fenceSegment, boardwalkEdgeX, houseZ + zOffset, "fence-z");
+                    
+                    console.log(`FENCE Z-SEGMENT: Placed at gate x=${boardwalkEdgeX.toFixed(2)}, z=${(houseZ + zOffset).toFixed(2)}`);
+                }
+                
+                // 2. Create 3 parallel fence rows along the path (along X-axis)
+                // Offsets for 3 parallel segments (-FENCE_SPACING_Z, 0, FENCE_SPACING_Z)
+                for (let offsetIndex = -1; offsetIndex <= 1; offsetIndex++) {
+                    const offsetZ = offsetIndex * FENCE_SPACING_Z;
+                    
+                    // For each parallel row, place multiple segments extending toward the house
+                    for (let segmentIndex = 1; segmentIndex < numSegmentsNeeded; segmentIndex++) {
+                        // Calculate X position for this segment
+                        // Starting at boardwalk edge and working toward house
+                        const segmentOffsetX = segmentIndex * FENCE_SEGMENT_LENGTH * (side === -1 ? 1 : -1);
+                        const fenceX = boardwalkEdgeX + segmentOffsetX;
+                        
+                        // Skip if we've gone past the house
+                        if ((side === -1 && fenceX > houseX) || (side === 1 && fenceX < houseX)) {
+                            continue;
+                        }
+                        
+                        // Create fence segment
+                        const fenceSegment = fenceGltf.scene.clone();
+                        applyFenceTexture(fenceSegment);
+                        
+                        // Position and scale the fence segment
+                        fenceSegment.position.set(fenceX, 0, houseZ + offsetZ);
+                        fenceSegment.scale.set(FENCE_SCALE, FENCE_SCALE, FENCE_SCALE);
+                        fenceSegment.rotation.y = Math.PI / 2 * -side; // Align with the path direction
+                        
+                        // Add to scene and store for animation
+                        storeFenceSegment(fenceSegment, fenceX, houseZ + offsetZ);
+                        
+                        console.log(`FENCE X-SEGMENT: Placed row=${offsetIndex}, segment=${segmentIndex} at x=${fenceX.toFixed(2)}, z=${(houseZ + offsetZ).toFixed(2)}`);
+                    }
+                }
+                
+                // 3. Perpendicular fence segments are now created by FenceCreator component
+                // This code was removed to prevent duplicate fence creation
+            });
+
+            // Store gate for animation
+            this.buildingInstances.push({
+                group: gate,
+                initialZ: houseZ,
+                initialX: boardwalkEdgeX,
+                userData: {
+                    type: "fence",
+                    useDirectPositionUpdate: false,
+                    visibilityDistance: 400,
+                    loopDistance: SCENERY_LOOP_DISTANCE_BUILDINGS,
+                }
+            });
+        });
+        }
+        
+        if (!this.scene) return;
+        console.log(
+            `SceneryManager: Creating road path from house at (${houseX.toFixed(1)}, ${houseZ.toFixed(1)}) to boardwalk...`,
+        );
+
+        // Load the road model specifically for this path instance
+        this.gltfLoader.load(
+            "/buildings/road.glb",
+            (gltf) => {
+                const roadSegment = gltf.scene; // This is a THREE.Group
+
+                // --- Calculations ---
+                // Determine the edge of the boardwalk closest to the house
+                // Fix for left/right asymmetry - using same formula for both sides
+                const boardwalkEdgeX = side * PATH_OFFSET; 
+                
+                console.log(`ROAD DEBUG: side=${side}, boardwalkEdgeX=${boardwalkEdgeX.toFixed(2)}, houseX=${houseX.toFixed(2)}`);
+
+                // Calculate the length needed for the road model to span the gap
+                const pathLength = Math.abs(houseX - boardwalkEdgeX);
+
+                // Calculate the required scale factor along the model's length axis
+                // Ensure default length is not zero to avoid division errors
+                const scaleFactor =
+                    this.ROAD_MODEL_DEFAULT_LENGTH > 0
+                        ? pathLength / this.ROAD_MODEL_DEFAULT_LENGTH
+                        : 1.0;
+
+                // Calculate the center X position for placing the scaled road model
+                const pathCenterX = (houseX + boardwalkEdgeX) / 2;
+
+                // --- Texture Application (using tree texture like other elements) ---
+                // Use the class's textureLoader instance. Assumes tree texture is needed.
+                const treeTexture = this.textureLoader.load(
+                    "/textures/colormaptree.png",
+                    undefined, // onSuccess (optional)
+                    undefined, // onProgress (optional)
+                    (err) =>
+                        console.error(
+                            "Path Texture: FAILED to load colormaptree.png for road path!",
+                            err,
+                        ),
+                );
+                treeTexture.flipY = false;
+                treeTexture.magFilter = THREE.NearestFilter;
+                treeTexture.minFilter = THREE.NearestFilter;
+
+                roadSegment.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (
+                            child.material instanceof THREE.MeshStandardMaterial
+                        ) {
+                            // Clone material to avoid modifying shared resources if loader caches
+                            const newMaterial = child.material.clone();
+                            newMaterial.map = treeTexture;
+                            newMaterial.needsUpdate = true;
+                            child.material = newMaterial;
+                        }
+                        // Road paths generally shouldn't cast shadows but should receive them
+                        child.castShadow = false;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                // --- Positioning, Scaling, and Rotation ---
+                // 1. Scale the road model first (assuming default length is along local X)
+                roadSegment.scale.set(scaleFactor, 1, 1); // Scale X to match pathLength, keep Y/Z original
+
+                // 2. Position the road segment's center
+                roadSegment.position.set(
+                    pathCenterX,
+                    this.ROAD_MODEL_Y_OFFSET,
+                    houseZ,
+                );
+
+                // 3. Rotate the road segment to be horizontal
+                roadSegment.rotation.y = 0;
+
+                // Add to scene
+                if (this.scene) {
+                    // Double check scene hasn't become null
+                    this.scene.add(roadSegment);
+                }
+
+                // --- Store instance for animation ---
+                // Use the standard looping mechanism like buildings
+                const pathUserData = {
+                    type: "houseRoad", // Identify this scenery type
+                    initialZ: houseZ,
+                    initialX: pathCenterX, // Store center X for reference
+                    useDirectPositionUpdate: false, // Follows building loop logic
+                    visibilityDistance: 400, // Adjust visibility if needed
+                    loopDistance: SCENERY_LOOP_DISTANCE_BUILDINGS, // Loop with buildings
+                };
+                roadSegment.userData = pathUserData; // Assign userData directly to the Group
+
+                this.buildingInstances.push({
+                    group: roadSegment, // Store the Group
+                    initialZ: houseZ,
+                    initialX: pathCenterX,
+                    userData: pathUserData,
+                });
+
+                console.log(
+                    `Created road path connecting house to boardwalk at z=${houseZ.toFixed(1)}, Length=${pathLength.toFixed(1)}, ScaleX=${scaleFactor.toFixed(2)}`,
+                );
+            },
+            undefined, // onProgress callback (optional)
+            (error) => {
+                console.error(
+                    `SceneryManager: Failed to load /buildings/road.glb for path at Z=${houseZ}`,
+                    error,
+                );
+            },
+        );
+    }
+
+    // --- Create lightposts along the boardwalk ---
+    private createLightposts(): void {
+        if (!this.scene) return;
+        console.log(
+            "SceneryManager: Creating lightposts along the boardwalk...",
+        );
+
+        // Load the lightpost model
+        this.gltfLoader.load("/buildings/lightpost-single.glb", (gltf) => {
+            // Use the SHARED texture loader instance from the class
+            const treeTexture = this.textureLoader.load(
+                "/textures/colormaptree.png",
+                // Success callback
+                () =>
+                    console.log(
+                        "Lightpost Texture: colormaptree.png loaded successfully via shared loader.",
+                    ),
+                undefined, // onProgress
+                (err) =>
+                    console.error(
+                        "Lightpost Texture: FAILED to load colormaptree.png via shared loader!",
+                        err,
+                    ),
+            );
+
+            // Ensure texture properties are set consistently (match createFoliage)
+            treeTexture.flipY = false;
+            treeTexture.magFilter = THREE.NearestFilter;
+            treeTexture.minFilter = THREE.NearestFilter;
+
+            // Create lightpost instances along both sides of the road
+            for (let i = 0; i < NUM_LIGHTPOSTS; i++) {
+                // Create lightposts with slight spacing variations
+                const zOffset = i * LIGHTPOST_SPACING + (Math.random() * 2 - 1); // Add slight randomness
+
+                // Left side lightpost
+                const leftLightpost = gltf.scene.clone();
+                leftLightpost.scale.set(2, 2, 2); // Double the size
+
+                // Right side lightpost
+                const rightLightpost = gltf.scene.clone();
+                rightLightpost.scale.set(2, 2, 2); // Double the size
+
+                // Apply textures to the lightposts
+                leftLightpost.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (
+                            child.material instanceof THREE.MeshStandardMaterial
+                        ) {
+                            child.material = child.material.clone();
+                            child.material.map = treeTexture;
+                            child.material.needsUpdate = true;
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                rightLightpost.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (
+                            child.material instanceof THREE.MeshStandardMaterial
+                        ) {
+                            child.material = child.material.clone();
+                            child.material.map = treeTexture;
+                            child.material.needsUpdate = true;
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                // Position the lightposts along the road
+                const zPos = -i * LIGHTPOST_SPACING;
+                leftLightpost.position.set(-LIGHTPOST_OFFSET, 0, zPos);
+                leftLightpost.rotation.y = Math.PI / 2; // Rotate 90 degrees to the left
+
+                rightLightpost.position.set(LIGHTPOST_OFFSET, 0, zPos);
+                rightLightpost.rotation.y = -Math.PI / 2; // Rotate 90 degrees to the right
+
+                // Store enhanced metadata for animation and visibility, using direct position updates
+                leftLightpost.userData = {
+                    initialZ: zPos,
+                    type: "lightpost",
+                    initialX: -LIGHTPOST_OFFSET,
+                    // Use direct position update like road segments
+                    useDirectPositionUpdate: true,
+                    // Add consistent visibility and recycling properties
+                    visibilityDistance: 600,
+                    repositionThreshold: REPOSITION_THRESHOLD_Z,
+                    loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                };
+                rightLightpost.userData = {
+                    initialZ: zPos,
+                    type: "lightpost",
+                    initialX: LIGHTPOST_OFFSET,
+                    // Use direct position update like road segments
+                    useDirectPositionUpdate: true,
+                    // Add consistent visibility and recycling properties
+                    visibilityDistance: 600,
+                    repositionThreshold: REPOSITION_THRESHOLD_Z,
+                    loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                };
+
+                // Add to scene
+                if (this.scene) {
+                    this.scene.add(leftLightpost);
+                    this.scene.add(rightLightpost);
+                }
+
+                // Store in building instances for animation with improved metadata
+                this.buildingInstances.push({
+                    group: leftLightpost,
+                    initialZ: zPos,
+                    initialX: -LIGHTPOST_OFFSET,
+                    userData: {
+                        type: "lightpost",
+                        // Use direct position update like road segments
+                        useDirectPositionUpdate: true,
+                        // Important for visibility control:
+                        visibilityDistance: 600,
+                        // Important for recycling:
+                        repositionThreshold: REPOSITION_THRESHOLD_Z,
+                        loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                    },
+                });
+
+                this.buildingInstances.push({
+                    group: rightLightpost,
+                    initialZ: zPos,
+                    initialX: LIGHTPOST_OFFSET,
+                    userData: {
+                        type: "lightpost",
+                        // Use direct position update like road segments
+                        useDirectPositionUpdate: true,
+                        // Important for visibility control:
+                        visibilityDistance: 600,
+                        // Important for recycling:
+                        repositionThreshold: REPOSITION_THRESHOLD_Z,
+                        loopDistance: LIGHTPOST_SPACING * NUM_LIGHTPOSTS,
+                    },
+                });
+            }
+
+            console.log(
+                `SceneryManager: Created ${NUM_LIGHTPOSTS * 2} lightposts with direct position updates.`,
+            );
+        });
+    }
+
+    // --- Create trees and foliage around buildings ---
+    private createFoliageAroundBuildings(): void {
+        if (!this.scene) return;
+        console.log("SceneryManager: Creating foliage around buildings...");
+
+        // Load tree colormap texture
+        const treeTexture = this.textureLoader.load(
+            "/textures/colormaptree.png",
+        );
+        treeTexture.flipY = false;
+        treeTexture.magFilter = THREE.NearestFilter;
+        treeTexture.minFilter = THREE.NearestFilter;
+
+        // Array of available tree models
+        const treeModels = [
+            "/buildings/pine.glb",
+            "/buildings/pine-crooked.glb",
+        ];
+
+        // Create trees near buildings but between houses and road
+        const loadTrees = () => {
+            // Helper to apply tree texture
+            const applyTreeTexture = (object: THREE.Object3D) => {
+                object.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach((mat) => {
+                                if (!mat.map) {
+                                    mat.map = treeTexture;
+                                    mat.needsUpdate = true;
+                                }
+                            });
+                        } else if (!child.material.map) {
+                            child.material.map = treeTexture;
+                            child.material.needsUpdate = true;
+                        }
+                    }
+                });
+            };
+            // For each tree we want to place
+            for (let i = 0; i < NUM_TREES; i++) {
+                // Select a random tree model
+                const randomTreeModel =
+                    treeModels[Math.floor(Math.random() * treeModels.length)];
+
+                // Load the selected tree model
+                this.gltfLoader.load(randomTreeModel, (gltf) => {
+                    const tree = gltf.scene;
+                    applyTreeTexture(tree);
+
+                    // Enable shadows for the tree
+                    tree.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+
+                    // If we have buildings, place trees between buildings and road
+                    if (this.buildingInstances.length > 0) {
+                        // Filter instances to find actual buildings (not hedges or other foliage)
+                        const buildingOnly = this.buildingInstances.filter(
+                            (instance) =>
+                                !instance.userData?.type ||
+                                instance.userData?.type === "building",
+                        );
+
+                        if (buildingOnly.length === 0) return;
+
+                        // Select a random building
+                        const randomBuildingIndex = Math.floor(
+                            Math.random() * buildingOnly.length,
+                        );
+                        const randomBuilding =
+                            buildingOnly[randomBuildingIndex];
+
+                        // Determine which side of the road the building is on
+                        const isLeftSide = randomBuilding.initialX < 0;
+
+                        // Position tree between building and road - but create a buffer zone around houses
+                        let treeX;
+
+                        const buildingWidth = 5; // Approximate width of buildings
+                        const safeDistance = 3; // Buffer distance from building edge
+
+                        if (isLeftSide) {
+                            // Left side (negative X) - place trees between building and boardwalk
+                            // Account for boardwalk area and keep trees away from it
+                            const buildingEdge =
+                                randomBuilding.initialX + buildingWidth / 2;
+                            const boardwalkEdge = -(
+                                BOARDWALK_OFFSET -
+                                BOARDWALK_WIDTH / 2
+                            ); // Left edge of boardwalk
+
+                            // Make sure trees are placed between building and boardwalk - no trees on boardwalk
+                            const availableSpace =
+                                Math.abs(
+                                    buildingEdge + safeDistance - boardwalkEdge,
+                                ) - 2; // Extra 2 units buffer
+
+                            if (availableSpace <= 0) {
+                                // Skip this tree if there's not enough space
+                                return;
+                            }
+
+                            // Place tree in safe zone between building and boardwalk
+                            treeX =
+                                buildingEdge +
+                                safeDistance +
+                                Math.random() * availableSpace * 0.7;
+
+                            // Make sure tree is not on boardwalk
+                            if (treeX > boardwalkEdge) {
+                                // Skip this tree placement if it would end up on the boardwalk
+                                return;
+                            }
+                        } else {
+                            // Right side (positive X) - place trees between building and boardwalk
+                            const buildingEdge =
+                                randomBuilding.initialX - buildingWidth / 2;
+                            const boardwalkEdge =
+                                BOARDWALK_OFFSET - BOARDWALK_WIDTH / 2; // Right edge of boardwalk
+
+                            // Make sure trees are placed between building and boardwalk - no trees on boardwalk
+                            const availableSpace =
+                                Math.abs(
+                                    buildingEdge - safeDistance - boardwalkEdge,
+                                ) - 2; // Extra 2 units buffer
+
+                            if (availableSpace <= 0) {
+                                // Skip this tree if there's not enough space
+                                return;
+                            }
+
+                            // Place tree in safe zone between building and boardwalk
+                            treeX =
+                                buildingEdge -
+                                safeDistance -
+                                Math.random() * availableSpace * 0.7;
+
+                            // Make sure tree is not on boardwalk
+                            if (treeX < boardwalkEdge) {
+                                // Skip this tree placement if it would end up on the boardwalk
+                                return;
+                            }
+                        }
+
+                        // Add slight Z randomness but keep safe distance from building in Z axis too
+                        const safeZDistance = 3;
+                        const offsetZ =
+                            (Math.random() * 2 + safeZDistance) *
+                            (Math.random() < 0.5 ? -1 : 1);
+                        const treeZ = randomBuilding.initialZ + offsetZ;
+
+                        // Scale the tree randomly - wider range
+                        const scale = 0.6 + Math.random() * 0.8; // Scale between 0.6 and 1.4
+                        tree.scale.set(scale, scale, scale);
+
+                        // Random rotation around Y axis (0 to 360 degrees)
+                        tree.rotation.y = Math.random() * Math.PI * 2;
+
+                        // Position the tree
+                        tree.position.set(treeX, 0, treeZ);
+
+                        // Make trees brighter green by applying a material override
+                        // Do not override tree materials to preserve original textures and colors from the model
+                        // Let the GLTFLoader handle the materials as defined in the .glb file
+
+                        // Store enhanced metadata for animation and visibility
+                        tree.userData = {
+                            initialZ: treeZ,
+                            type: "foliage",
+                            initialX: treeX,
+                            // Use direct position update like road segments
+                            useDirectPositionUpdate: true,
+                            // Add specific properties for visibility and recycling
+                            visibilityDistance: 600,
+                            repositionThreshold: REPOSITION_THRESHOLD_Z,
+                            loopDistance: SCENERY_LOOP_DISTANCE_BUILDINGS, // Use building loop distance
+                        };
+
+                        // Add to scene
+                        if (this.scene) {
+                            this.scene.add(tree);
+                        }
+
+                        // Store in building instances for animation with improved metadata
+                        this.buildingInstances.push({
+                            group: tree,
+                            initialZ: treeZ,
+                            initialX: treeX,
+                            userData: {
+                                type: "foliage",
+                                // Use direct position update like road segments
+                                useDirectPositionUpdate: true,
+                                // Important for visibility control:
+                                visibilityDistance: 600,
+                                // Important for recycling consistency:
+                                repositionThreshold: REPOSITION_THRESHOLD_Z,
+                                loopDistance: SCENERY_LOOP_DISTANCE_BUILDINGS,
+                            },
+                        });
+                    }
+                });
+            }
+
+            console.log(
+                `SceneryManager: Created ${NUM_TREES} trees around buildings.`,
+            );
+        };
+
+        // No delay needed - we're specifically filtering for buildings
+        loadTrees();
+    }
+
+    public update(progress: number): void {
+        if (!this.buildingsCreated || !this.totalDistanceScrolledRef?.current)
+            return;
+
+        // Update progress if changed
+        if (progress !== this.progressPercentage) {
+            this.progressPercentage = progress;
+
+            // When progress changes, we might want to update building types
+            // Different buildings will appear after 50% of the cards are completed
+            const shouldUseTowerModels = progress >= 50; // Switch to towers after 50% completion
+
+            // Add debug logging for the tower building conversion
+            console.log(
+                `BUILDING PROGRESS: Current progress = ${progress}%, shouldUseTowerModels = ${shouldUseTowerModels}`,
+            );
+
+            // Make sure we have sample tower buildings available
+            const hasTowerModels = this.sampleBuildingPartNames.some((name) =>
+                name.includes("tower"),
+            );
+            console.log(
+                `BUILDING PROGRESS: Has tower models available = ${hasTowerModels}, model names: ${this.sampleBuildingPartNames.join(", ")}`,
+            );
+
+            // Update each building type based on progress
+            this.buildingInstances.forEach((instance, index) => {
+                // Skip update if we already changed this building's type
+                if (
+                    instance.userData?.updatedForProgress ===
+                    this.progressPercentage
+                )
+                    return;
+
+                // Don't replace existing buildings anymore - simply mark that the progress changed
+                if (shouldUseTowerModels) {
+                    // Just mark this instance as having been updated for this progress level
+                    // This will prevent unnecessary checks of the same building
+                    instance.userData = {
+                        ...instance.userData,
+                        updatedForProgress: this.progressPercentage,
+                    };
+
+                    // Add user data marker to indicate we reached 50% progress
+                    // We'll use this for new buildings only
+                    if (!this.scene?.userData.towerPhaseReached) {
+                        console.log(
+                            `TOWER PHASE REACHED: Progress at ${this.progressPercentage}% - New buildings will now be towers`,
+                        );
+                        if (this.scene) {
+                            this.scene.userData.towerPhaseReached = true;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Handle scenery positions based on scrolling with improved logging
+        const scroll = this.totalDistanceScrolledRef.current;
+        
+        // Track the number of recycled objects in this update cycle
+        let recycledObjectsCount = 0;
+        const startUpdateTime = performance.now();
+
+        // Add occasional logging to track how scenery is moving
+        if (Math.random() < 0.001) {
+            console.log(
+                `SCENERY TRACKING: Total scroll distance ${scroll.toFixed(2)}`,
+            );
+        }
+
+        this.buildingInstances.forEach((instance, index) => {
+            // For special boardwalk segments that need to exactly match road behavior:
+            if (instance.userData?.useDirectPositionUpdate) {
+                // Use direct position update, just like the road segments in DrivingGameScene
+                instance.group.position.z += FORWARD_SPEED;
+
+                // Log position occasionally to monitor movement
+                if (index === 0 && Math.random() < 0.002) {
+                    // Determine element type for better logging
+                    const elementType =
+                        instance.userData?.type === "foliage"
+                            ? "TREE"
+                            : "BOARDWALK";
+                    console.log(
+                        `${elementType} TRACKING: First element at z=${instance.group.position.z.toFixed(2)}, threshold=${REPOSITION_THRESHOLD_Z}`,
+                    );
+                }
+
+                // When a segment passes behind the camera + buffer, move it to the far end of the road chain
+                // using EXACTLY the same logic as road segments in DrivingGameScene.tsx
+                if (instance.group.position.z > REPOSITION_THRESHOLD_Z) {
+                    const oldZ = instance.group.position.z;
+                    instance.group.position.z -= ROAD_LOOP_DISTANCE;
+                    recycledObjectsCount++; // Increment recycled objects counter
+
+                    // Log recycling using EXACTLY the same format as road, with element type
+                    const elementType =
+                        instance.userData?.type === "foliage"
+                            ? "TREE"
+                            : "BOARDWALK";
+                    console.log(
+                        `${elementType} LOOP: Element ${index % 10} recycled from z=${oldZ.toFixed(2)} to z=${instance.group.position.z.toFixed(2)}`,
+                    );
+                }
+
+                // Visibility is handled together with repositioning for special direct position segments
+                // Distance from camera to object (after position update)
+                const distanceFromCamera = Math.abs(instance.group.position.z);
+                // Use the userData visibilityDistance if available, or a default
+                const visibilityDistance =
+                    instance.userData?.visibilityDistance || 600;
+
+                // Control visibility
+                if (distanceFromCamera > visibilityDistance) {
+                    if (instance.group.visible) {
+                        instance.group.visible = false;
+                    }
+                } else {
+                    if (!instance.group.visible) {
+                        instance.group.visible = true;
+                    }
+                }
+            }
+            // For all other scenery types using the original combined offset approach:
+            else {
+                // Determine which loop distance to use based on scenery type
+                const loopDistance =
+                    instance.userData?.loopDistance ||
+                    SCENERY_LOOP_DISTANCE_BUILDINGS;
+
+                const worldZ = instance.initialZ + scroll;
+                const loopZ =
+                    ((worldZ % loopDistance) + loopDistance) % loopDistance;
+                const finalZ = loopZ - loopDistance;
+
+                // Store old position for logging
+                const oldZ = instance.group.position.z;
+
+                // Handle fence segments with relative offsets
+                if (
+                    instance.userData?.type === "fence" &&
+                    typeof instance.userData?.relativeOffsetZ === "number"
+                ) {
+                    instance.group.position.z =
+                        finalZ + instance.userData.relativeOffsetZ;
+                    instance.group.position.x = instance.initialX;
+                } else {
+                    instance.group.position.z = finalZ;
+                    instance.group.position.x = instance.initialX;
+                }
+
+                // Log occasional position changes for troubleshooting
+                if (index === 0 && Math.random() < 0.001) {
+                    console.log(
+                        `SCENERY UPDATE: First building at z=${finalZ.toFixed(2)}, moved from ${oldZ.toFixed(2)}`,
+                    );
+
+                    // Log scenery type and state
+                    const type = instance.userData?.buildingType || "standard";
+                    console.log(
+                        `SCENERY TYPE: ${type}, visible=${instance.group.visible}`,
+                    );
+                }
+
+                // Check if building is being recycled (looped around) and log it
+                const bigPositionChange = Math.abs(oldZ - finalZ) > 50; // Detect big jumps
+                if (bigPositionChange) {
+                    recycledObjectsCount++; // Increment recycled objects counter
+                    
+                    // Log only 10% of recycles to avoid spam
+                    if (Math.random() < 0.1) {
+                        console.log(
+                            `SCENERY LOOP: ${instance.userData?.type || "Building"} recycled from z=${oldZ.toFixed(2)} to z=${finalZ.toFixed(2)}`,
+                        );
+                    }
+                }
+
+                // Make all scenery visible longer before completely disappearing
+                // Distance from camera to object
+                const distanceFromCamera = Math.abs(finalZ);
+
+                // Use the userData visibilityDistance if available, otherwise determine based on type
+                const visibilityDistance =
+                    instance.userData?.visibilityDistance ||
+                    (instance.userData?.type === "foliage" ||
+                    instance.userData?.type === "hedge"
+                        ? 600 // Very high distance for trees and hedges to prevent early disappearance
+                        : 500); // Default for other scenery types
+
+                // Determine visibility with a gradual fade-out zone
+                if (distanceFromCamera > visibilityDistance) {
+                    if (instance.group.visible) {
+                        if (index < 3 && Math.random() < 0.1) {
+                            console.log(
+                                `SCENERY HIDE: ${instance.userData?.type || "scenery"} at distance=${distanceFromCamera.toFixed(2)} hidden (beyond ${visibilityDistance})`,
+                            );
+                        }
+                        instance.group.visible = false;
+                    }
+                } else {
+                    if (!instance.group.visible) {
+                        if (index < 3 && Math.random() < 0.1) {
+                            console.log(
+                                `SCENERY SHOW: ${instance.userData?.type || "scenery"} at distance=${distanceFromCamera.toFixed(2)} shown (within ${visibilityDistance})`,
+                            );
+                        }
+                        instance.group.visible = true;
+                    }
+                }
+            }
+        });
+
+        // Log performance metrics if we recycled objects
+        if (recycledObjectsCount > 0) {
+            const updateTime = performance.now() - startUpdateTime;
+            console.log(`RECYCLING EVENT: Moved ${recycledObjectsCount} objects, update took ${updateTime.toFixed(2)}ms`);
+        }
+    }
+
+    // --- Dispose (With unified handling for all scenery types) ---
+    public dispose(): void {
+        console.log(
+            "SceneryManager: Dispose called. Scheduling delayed removal...",
+        );
+        if (this.disposalTimeoutId) {
+            clearTimeout(this.disposalTimeoutId);
+            this.disposalTimeoutId = null;
+        }
+        const scene = this.scene;
+        const instancesToDispose = [...this.buildingInstances];
+
+        // Ensure consistent handling across all scenery elements by using a very long timeout
+        // This prevents premature disappearance of certain types of scenery
+        const UNIFIED_DISPOSE_TIMEOUT = 30000; // 30 seconds - long enough for all elements
+
+        this.disposalTimeoutId = setTimeout(() => {
+            console.log(
+                "SceneryManager: Executing delayed disposal for ALL scenery elements...",
+            );
+            if (scene) {
+                // Track scenery types for logging
+                const sceneryTypes = instancesToDispose.reduce(
+                    (acc, instance) => {
+                        const type = instance.userData?.type || "building";
+                        acc[type] = (acc[type] || 0) + 1;
+                        return acc;
+                    },
+                    {} as Record<string, number>,
+                );
+
+                // Properly dispose of all scenery objects with the same mechanism
+                instancesToDispose.forEach((instance) => {
+                    // First check if the object is still in the scene (might have been removed)
+                    const isInScene = scene.children.includes(instance.group);
+                    if (isInScene) {
+                        scene.remove(instance.group);
+                    }
+
+                    // Dispose geometries and materials regardless
+                    instance.group.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            // Dispose geometry
+                            if (child.geometry) {
+                                child.geometry.dispose();
+                            }
+
+                            // Dispose materials (handle both array and single material)
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach((material) => {
+                                    if (material.map) material.map.dispose();
+                                    material.dispose();
+                                });
+                            } else if (child.material) {
+                                if (child.material.map)
+                                    child.material.map.dispose();
+                                child.material.dispose();
+                            }
+                        }
+                    });
+                });
+
+                console.log(
+                    "SceneryManager: Disposed scenery counts:",
+                    Object.entries(sceneryTypes)
+                        .map(([type, count]) => `${type}: ${count}`)
+                        .join(", "),
+                );
+            } else {
+                console.log(
+                    "SceneryManager: Scene was null during delayed disposal.",
+                );
+            }
+            this.disposalTimeoutId = null;
+        }, UNIFIED_DISPOSE_TIMEOUT); // Unified longer timeout for all scenery types
+
+        this.loadedParts.clear();
+        this.buildingPaletteTexture?.dispose();
+        this.buildingPaletteTexture = null;
+        this.assetsLoaded = false;
+        this.buildingsCreated = false;
+        this.groundFloorPartNames = [];
+        this.middleFloorPartNames = [];
+        this.middleFloorBalconyNames = [];
+        this.roof1x1PartNames = [];
+        this.sampleBuildingPartNames = [];
+        console.log(
+            "SceneryManager: Non-building resources disposed, removal scheduled.",
+        );
+    }
+}

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <!-- PWA and theme settings -->
+    <meta name="theme-color" content="#4CAF50" />
+    <meta name="description" content="Learn languages with AI-powered flashcards that work offline" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FlashLingo" />
+    <meta name="application-name" content="FlashLingo" />
+    
+    <!-- Cache control -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
+    <!-- App icons -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    
+    <!-- iOS splash screens -->
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 768px) and (max-device-width: 1024px)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 834px) and (max-device-width: 834px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 1024px) and (max-device-width: 1024px) and (-webkit-device-pixel-ratio: 2)" />
+    
+    <title>FlashLingo | Language Learning App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <noscript>
+      <div style="text-align: center; padding: 2rem;">
+        <h1>JavaScript Required</h1>
+        <p>Please enable JavaScript to use FlashLingo.</p>
+      </div>
+    </noscript>
+    
+    <!-- Fallback for offline mode -->
+    <div id="offline-message" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #ff9800; color: white; text-align: center; padding: 8px; z-index: 9999;">
+      You are currently offline. Some features may be limited.
+    </div>
+    <script>
+      // Show offline message when needed
+      function updateOfflineMessage() {
+        const message = document.getElementById('offline-message');
+        if (message) {
+          message.style.display = navigator.onLine ? 'none' : 'block';
+        }
+      }
+      window.addEventListener('online', updateOfflineMessage);
+      window.addEventListener('offline', updateOfflineMessage);
+      updateOfflineMessage();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,594 @@
+import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+
+interface DrivingGameSceneProps {
+  word: string;
+  correctTranslation: string;
+  options: string[];
+  onSelectLeft: () => void;
+  onSelectRight: () => void;
+}
+
+export function DrivingGameScene({
+  word,
+  correctTranslation,
+  options,
+  onSelectLeft,
+  onSelectRight
+}: DrivingGameSceneProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const carRef = useRef<THREE.Group | null>(null);
+  const signLeftRef = useRef<THREE.Mesh | null>(null);
+  const signRightRef = useRef<THREE.Mesh | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  
+  // NEW: Distance-based sign passing detection
+  const [hasPassed, setHasPassed] = useState(false);
+  const distanceCounterRef = useRef(0);
+  
+  // Keep track of car position
+  const carPositionRef = useRef<'center' | 'left' | 'right'>('center');
+  
+  // Movement state
+  const isMovingRef = useRef(false);
+  const moveStartTimeRef = useRef(0);
+  const moveTargetXRef = useRef(0);
+  const moveStartXRef = useRef(0);
+  
+  // Constants for the game
+  const LANE_WIDTH = 3;
+  const ANIMATION_DURATION = 500; // ms
+  const FORWARD_SPEED = 0.1; // Speed of forward motion
+  const ROAD_LENGTH = 100; // Length of the road
+  const SIGN_DISTANCE = 20; // Distance to trigger sign passing
+  
+  // Reset distance counter when options change (new card)
+  useEffect(() => {
+    console.log("New options detected, resetting distance counter");
+    distanceCounterRef.current = 0;
+    setHasPassed(false);
+  }, [options]);
+  
+  useEffect(() => {
+    // Set up scene
+    const width = containerRef.current?.clientWidth || 800;
+    const height = containerRef.current?.clientHeight || 400;
+    
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
+    scene.background = new THREE.Color(0x87ceeb); // Sky blue
+    
+    // Add camera
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    cameraRef.current = camera;
+    camera.position.set(0, 2, 7);
+    camera.lookAt(0, 0, -10);
+    
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 5);
+    scene.add(directionalLight);
+    
+    // Create renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    rendererRef.current = renderer;
+    renderer.setSize(width, height);
+    renderer.shadowMap.enabled = true;
+    
+    if (containerRef.current) {
+      // Clear previous renderer if it exists
+      while (containerRef.current.firstChild) {
+        containerRef.current.removeChild(containerRef.current.firstChild);
+      }
+      containerRef.current.appendChild(renderer.domElement);
+    }
+    
+    // Create game elements
+    createRoad();
+    createCar();
+    createSigns();
+    createCityElements();
+    
+    // Set up keydown event listener
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isMovingRef.current) return; // Don't process keypresses during animation
+      
+      if (e.key === 'ArrowLeft' || e.key === 'a') {
+        if (carPositionRef.current !== 'left') {
+          moveCar('left');
+        }
+      } else if (e.key === 'ArrowRight' || e.key === 'd') {
+        if (carPositionRef.current !== 'right') {
+          moveCar('right');
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Start animation loop
+    animate();
+    
+    // Update sign text
+    if (options.length >= 2) {
+      if (signLeftRef.current) updateSignText(signLeftRef.current, options[0]);
+      if (signRightRef.current) updateSignText(signRightRef.current, options[1]);
+    }
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      
+      // Clean up Three.js resources
+      renderer.dispose();
+      if (sceneRef.current) {
+        sceneRef.current.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.geometry.dispose();
+            if (object.material instanceof THREE.Material) {
+              object.material.dispose();
+            } else if (Array.isArray(object.material)) {
+              object.material.forEach((material) => material.dispose());
+            }
+          }
+        });
+      }
+    };
+  }, []);
+  
+  // Update sign text when options change
+  useEffect(() => {
+    if (options.length >= 2) {
+      if (signLeftRef.current) updateSignText(signLeftRef.current, options[0]);
+      if (signRightRef.current) updateSignText(signRightRef.current, options[1]);
+    }
+    
+    // Reset car to center position when options change
+    if (carRef.current) {
+      carRef.current.position.x = 0;
+      carPositionRef.current = 'center';
+    }
+  }, [options]);
+  
+  function createRoad() {
+    if (!sceneRef.current) return;
+    
+    // Create the road
+    const roadGeometry = new THREE.PlaneGeometry(10, 100);
+    const roadMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0x333333,
+      side: THREE.DoubleSide
+    });
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.rotation.x = -Math.PI / 2;
+    road.position.z = -50;
+    sceneRef.current.add(road);
+    
+    // Add lane dividers
+    const dividerGeometry = new THREE.PlaneGeometry(0.2, 100);
+    const dividerMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    });
+    
+    // Left lane divider
+    const dividerLeft = new THREE.Mesh(dividerGeometry, dividerMaterial);
+    dividerLeft.rotation.x = -Math.PI / 2;
+    dividerLeft.position.set(-LANE_WIDTH, 0.01, -50);
+    sceneRef.current.add(dividerLeft);
+    
+    // Right lane divider
+    const dividerRight = new THREE.Mesh(dividerGeometry, dividerMaterial);
+    dividerRight.rotation.x = -Math.PI / 2;
+    dividerRight.position.set(LANE_WIDTH, 0.01, -50);
+    sceneRef.current.add(dividerRight);
+    
+    // Center divider (dashed line)
+    for (let i = 0; i < 20; i++) {
+      const dashGeometry = new THREE.PlaneGeometry(0.2, 2);
+      const dash = new THREE.Mesh(dashGeometry, dividerMaterial);
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(0, 0.01, -5 * i - 5);
+      sceneRef.current.add(dash);
+    }
+  }
+  
+  function createCar() {
+    if (!sceneRef.current) return;
+    
+    // Create a car group
+    const car = new THREE.Group();
+    carRef.current = car;
+    
+    // Car body
+    const bodyGeometry = new THREE.BoxGeometry(1.5, 0.6, 3);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.5;
+    car.add(body);
+    
+    // Car roof
+    const roofGeometry = new THREE.BoxGeometry(1.3, 0.5, 1.5);
+    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xaa0000 });
+    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+    roof.position.set(0, 1, -0.2);
+    car.add(roof);
+    
+    // Wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    
+    const wheelPositions = [
+      { x: -0.8, y: 0.4, z: 1 }, // Front left
+      { x: 0.8, y: 0.4, z: 1 },  // Front right
+      { x: -0.8, y: 0.4, z: -1 }, // Back left
+      { x: 0.8, y: 0.4, z: -1 }   // Back right
+    ];
+    
+    wheelPositions.forEach(position => {
+      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(position.x, position.y, position.z);
+      car.add(wheel);
+    });
+    
+    // Headlights
+    const headlightGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 16);
+    const headlightMaterial = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffffcc, emissiveIntensity: 0.5 });
+    
+    const headlightLeft = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    headlightLeft.rotation.x = Math.PI / 2;
+    headlightLeft.position.set(-0.6, 0.5, 1.5);
+    car.add(headlightLeft);
+    
+    const headlightRight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    headlightRight.rotation.x = Math.PI / 2;
+    headlightRight.position.set(0.6, 0.5, 1.5);
+    car.add(headlightRight);
+    
+    // Add car to scene
+    car.position.set(0, 0, 4);
+    sceneRef.current.add(car);
+  }
+  
+  function createSigns() {
+    if (!sceneRef.current) return;
+    
+    // Create sign posts and signs
+    const postGeometry = new THREE.CylinderGeometry(0.1, 0.1, 3, 8);
+    const postMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    
+    // Left sign post
+    const leftPost = new THREE.Mesh(postGeometry, postMaterial);
+    leftPost.position.set(-LANE_WIDTH * 1.5, 1.5, -15);
+    sceneRef.current.add(leftPost);
+    
+    // Right sign post
+    const rightPost = new THREE.Mesh(postGeometry, postMaterial);
+    rightPost.position.set(LANE_WIDTH * 1.5, 1.5, -15);
+    sceneRef.current.add(rightPost);
+    
+    // Sign boards - increased size for better readability
+    const signGeometry = new THREE.BoxGeometry(3.5, 2.0, 0.1);
+    const signMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0x008800,
+      side: THREE.DoubleSide
+    });
+    
+    // Left sign - positioned so post connects at bottom
+    const leftSign = new THREE.Mesh(signGeometry, signMaterial);
+    leftSign.position.set(-LANE_WIDTH * 1.5, 3.1, -15);
+    sceneRef.current.add(leftSign);
+    signLeftRef.current = leftSign;
+    
+    // Right sign - positioned so post connects at bottom
+    const rightSign = new THREE.Mesh(signGeometry, signMaterial);
+    rightSign.position.set(LANE_WIDTH * 1.5, 3.1, -15);
+    sceneRef.current.add(rightSign);
+    signRightRef.current = rightSign;
+    
+    // Add text to signs
+    if (options.length >= 2) {
+      updateSignText(leftSign, options[0]);
+      updateSignText(rightSign, options[1]);
+    }
+  }
+  
+  function createCityElements() {
+    if (!sceneRef.current) return;
+    
+    // Ground plane
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: 0x7cfc00,
+      side: THREE.DoubleSide
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01;
+    ground.position.z = -50;
+    sceneRef.current.add(ground);
+    
+    // Simple buildings (just blocks for now)
+    const buildingColors = [0xaaaaaa, 0xbbbbbb, 0xcccccc, 0xdddddd];
+    
+    // Create buildings on both sides of the road
+    for (let i = 0; i < 10; i++) {
+      // Left side buildings
+      const leftBuildingHeight = 2 + Math.random() * 5;
+      const leftBuildingWidth = 2 + Math.random() * 3;
+      const leftBuildingDepth = 2 + Math.random() * 3;
+      
+      const leftBuildingGeometry = new THREE.BoxGeometry(
+        leftBuildingWidth,
+        leftBuildingHeight,
+        leftBuildingDepth
+      );
+      const leftBuildingMaterial = new THREE.MeshStandardMaterial({
+        color: buildingColors[Math.floor(Math.random() * buildingColors.length)]
+      });
+      const leftBuilding = new THREE.Mesh(leftBuildingGeometry, leftBuildingMaterial);
+      
+      // Position randomly on the left side of the road
+      leftBuilding.position.set(
+        -LANE_WIDTH * 2 - Math.random() * 10,
+        leftBuildingHeight / 2,
+        -10 - i * 10
+      );
+      sceneRef.current.add(leftBuilding);
+      
+      // Right side buildings
+      const rightBuildingHeight = 2 + Math.random() * 5;
+      const rightBuildingWidth = 2 + Math.random() * 3;
+      const rightBuildingDepth = 2 + Math.random() * 3;
+      
+      const rightBuildingGeometry = new THREE.BoxGeometry(
+        rightBuildingWidth,
+        rightBuildingHeight,
+        rightBuildingDepth
+      );
+      const rightBuildingMaterial = new THREE.MeshStandardMaterial({
+        color: buildingColors[Math.floor(Math.random() * buildingColors.length)]
+      });
+      const rightBuilding = new THREE.Mesh(rightBuildingGeometry, rightBuildingMaterial);
+      
+      // Position randomly on the right side of the road
+      rightBuilding.position.set(
+        LANE_WIDTH * 2 + Math.random() * 10,
+        rightBuildingHeight / 2,
+        -10 - i * 10
+      );
+      sceneRef.current.add(rightBuilding);
+    }
+  }
+  
+  function updateSignText(sign: THREE.Mesh, text: string) {
+    // Remove existing text if any
+    if (sign.children.length > 0) {
+      sign.children.forEach(child => {
+        sign.remove(child);
+      });
+    }
+    
+    // Create a canvas to render text
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    
+    if (context) {
+      context.fillStyle = '#008800';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      
+      context.font = 'bold 36px Arial';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = 'white';
+      
+      // Handle long text by checking length and reducing font size if needed
+      if (text.length > 10) {
+        context.font = 'bold 24px Arial';
+      }
+      if (text.length > 15) {
+        context.font = 'bold 18px Arial';
+      }
+      
+      // Break text into lines if it's too long
+      const maxLineLength = 12;
+      if (text.length > maxLineLength) {
+        const words = text.split(' ');
+        let line = '';
+        const lines = [];
+        
+        for (const word of words) {
+          if ((line + word).length <= maxLineLength) {
+            line += (line ? ' ' : '') + word;
+          } else {
+            lines.push(line);
+            line = word;
+          }
+        }
+        
+        if (line) {
+          lines.push(line);
+        }
+        
+        // Draw multiline text
+        const lineHeight = context.font.includes('18px') ? 24 : 
+                          context.font.includes('24px') ? 30 : 40;
+        
+        lines.forEach((line, index) => {
+          const y = canvas.height / 2 - ((lines.length - 1) * lineHeight / 2) + index * lineHeight;
+          context.fillText(line, canvas.width / 2, y);
+        });
+      } else {
+        // Draw single line text
+        context.fillText(text, canvas.width / 2, canvas.height / 2);
+      }
+      
+      // Create texture from canvas
+      const texture = new THREE.CanvasTexture(canvas);
+      
+      // Create a material with the text texture
+      const textMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.DoubleSide
+      });
+      
+      // Create a plane for the text - increased size to match larger sign boards
+      const textGeometry = new THREE.PlaneGeometry(3.4, 1.9);
+      const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+      
+      // Position slightly in front of the sign
+      textMesh.position.z = 0.06;
+      
+      // Add text mesh to sign
+      sign.add(textMesh);
+    }
+  }
+  
+  function moveCar(direction: 'left' | 'right') {
+    if (!carRef.current || isMovingRef.current) return;
+    
+    isMovingRef.current = true;
+    moveStartTimeRef.current = Date.now();
+    moveStartXRef.current = carRef.current.position.x;
+    
+    let targetX = carRef.current.position.x;
+    
+    // Determine target position based on current position and direction
+    if (direction === 'left') {
+      if (carPositionRef.current === 'center') {
+        targetX = -LANE_WIDTH;
+        carPositionRef.current = 'left';
+      } else if (carPositionRef.current === 'right') {
+        targetX = 0;
+        carPositionRef.current = 'center';
+      }
+    } else if (direction === 'right') {
+      if (carPositionRef.current === 'center') {
+        targetX = LANE_WIDTH;
+        carPositionRef.current = 'right';
+      } else if (carPositionRef.current === 'left') {
+        targetX = 0;
+        carPositionRef.current = 'center';
+      }
+    }
+    
+    moveTargetXRef.current = targetX;
+  }
+  
+  // New simplified animation function with distance-based detection
+  function animate() {
+    if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+    
+    // Increment distance counter for sign passing detection
+    distanceCounterRef.current += FORWARD_SPEED;
+    
+    // Check if we've reached the sign position and haven't already triggered
+    if (!hasPassed && distanceCounterRef.current >= SIGN_DISTANCE) {
+      console.log("===== SIGN PASSING POINT REACHED =====");
+      console.log(`Car position: ${carPositionRef.current}`);
+      
+      // Trigger callback based on car position
+      if (carPositionRef.current === 'left') {
+        console.log("Triggering LEFT selection");
+        onSelectLeft();
+      } else if (carPositionRef.current === 'right') {
+        console.log("Triggering RIGHT selection");
+        onSelectRight();
+      } else {
+        console.log("Car in center lane - no selection");
+      }
+      
+      // Mark as passed so we don't trigger again for this card
+      setHasPassed(true);
+    }
+    
+    // Animate car wheels to simulate forward motion
+    if (carRef.current) {
+      // Find wheel elements and rotate them
+      carRef.current.children.forEach(child => {
+        if (child instanceof THREE.Mesh && 
+            child.geometry instanceof THREE.CylinderGeometry &&
+            child.position.y === 0.4) { // Check for wheels by their y position
+          // Rotate wheels to simulate forward motion
+          child.rotation.x += 0.1; 
+        }
+      });
+      
+      // Simulate forward motion by moving objects in the scene
+      sceneRef.current.children.forEach(child => {
+        // Move everything except the car and the camera
+        if (child !== carRef.current && !(child instanceof THREE.Camera)) {
+          // Only move objects that are in front of the car (negative z position)
+          if (child.position.z < 10) {
+            child.position.z += FORWARD_SPEED;
+            
+            // Reset objects that have moved past the car (looping effect)
+            if (child.position.z > 10) {
+              if (child.userData.originalZ !== undefined) {
+                child.position.z = child.userData.originalZ;
+              } else {
+                // Store original position on first pass
+                child.userData.originalZ = child.position.z;
+                child.position.z = -ROAD_LENGTH;
+              }
+            }
+          }
+        }
+      });
+      
+      // Handle car movement animation (lane changing)
+      if (isMovingRef.current) {
+        const elapsed = Date.now() - moveStartTimeRef.current;
+        const duration = ANIMATION_DURATION;
+        
+        if (elapsed < duration) {
+          // Ease in-out animation
+          const t = elapsed / duration;
+          const smoothT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          
+          carRef.current.position.x = moveStartXRef.current + (moveTargetXRef.current - moveStartXRef.current) * smoothT;
+          
+          // Add a slight tilt to the car during turning
+          const tiltAmount = 0.2;
+          const direction = moveTargetXRef.current > moveStartXRef.current ? -1 : 1;
+          const tiltProgress = Math.sin(Math.PI * smoothT);
+          
+          carRef.current.rotation.z = direction * tiltAmount * tiltProgress;
+        } else {
+          // Snap to final position and reset rotation
+          carRef.current.position.x = moveTargetXRef.current;
+          carRef.current.rotation.z = 0;
+          isMovingRef.current = false;
+        }
+      }
+    }
+    
+    rendererRef.current.render(sceneRef.current, cameraRef.current);
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }
+  
+  return (
+    <div 
+      ref={containerRef} 
+      style={{ 
+        width: '100%', 
+        height: '300px',
+        border: '1px solid #ccc',
+        borderRadius: '8px',
+        overflow: 'hidden'
+      }}
+    />
+  );
+}

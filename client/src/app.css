@@ -1,0 +1,96 @@
+/* Card flip animations */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Add card flipping styles for both modes */
+.streak-card-container,
+.study-card-container {
+  perspective: 1000px;
+  width: 100%;
+  height: 100%;
+}
+
+.streak-card-container.flipped .streak-card-inner,
+.study-card-container.flipped .study-card-inner {
+  transform: rotateY(180deg);
+}
+
+.streak-card-inner,
+.study-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.streak-card-front, 
+.streak-card-back,
+.study-card-front, 
+.study-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.streak-card-front,
+.study-card-front {
+  z-index: 2;
+}
+
+.streak-card-back,
+.study-card-back {
+  transform: rotateY(180deg);
+}
+
+/* Flashcard transition animations */
+.flashcard-container {
+  overflow: hidden;
+  position: relative;
+}
+
+.flashcard-slide-out-right {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.flashcard-slide-out-left {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.flashcard-teleport {
+  transition: none !important;
+  transform: translateX(0) !important;
+  opacity: 1 !important;
+}
+
+/* Prevent layout shifts during card transitions */
+.card-stack-container {
+  min-height: 400px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-transition-smooth {
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.card-transition-instant {
+  transition: none;
+}

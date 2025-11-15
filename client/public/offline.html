@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - FlashLingo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 2rem;
+    }
+    h1 {
+      color: #4CAF50;
+      margin-bottom: 1rem;
+      font-size: 2rem;
+    }
+    p {
+      margin-bottom: 2rem;
+      font-size: 1.1rem;
+      color: #555;
+      max-width: 500px;
+    }
+    .btn {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.2s;
+    }
+    .btn:hover {
+      background-color: #45a049;
+    }
+    .cards-container {
+      margin-top: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+      max-width: 600px;
+    }
+    .card {
+      background-color: white;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      width: 250px;
+    }
+    .card-title {
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="80" height="100" x="10" y="0" rx="8" fill="#4CAF50" />
+    <rect width="70" height="90" x="15" y="5" rx="4" fill="white" />
+    <text x="50" y="55" text-anchor="middle" font-size="40" font-weight="bold" fill="#4CAF50">FL</text>
+    <path d="M80,20 C90,40 80,80 40,90" stroke="#E91E63" stroke-width="4" fill="none" stroke-linecap="round" />
+  </svg>
+  
+  <h1>You're Offline</h1>
+  <p>FlashLingo is designed to work offline. Your saved cards and progress are available locally.</p>
+  
+  <button class="btn" onclick="window.location.reload()">Try Reconnecting</button>
+  
+  <div class="cards-container">
+    <div class="card">
+      <div class="card-title">Study Offline</div>
+      <p>Your downloaded flashcards can still be accessed for study sessions.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Progress Saved</div>
+      <p>Your learning progress is saved locally and will sync when you're back online.</p>
+    </div>
+  </div>
+  
+  <script>
+    // Check if we can reconnect
+    window.addEventListener('online', () => {
+      window.location.href = '/';
+    });
+    
+    // Recovery script for white-screen issues
+    document.addEventListener('DOMContentLoaded', () => {
+      // Try to recover the last known path from sessionStorage
+      const lastPath = sessionStorage.getItem('lastPath') || sessionStorage.getItem('currentPath');
+      const recoveryButton = document.createElement('button');
+      recoveryButton.className = 'btn';
+      recoveryButton.style.marginTop = '1rem';
+      recoveryButton.style.backgroundColor = '#2196F3';
+      recoveryButton.textContent = 'Attempt App Recovery';
+      
+      recoveryButton.addEventListener('click', () => {
+        // Special recovery sequence - clear service worker cache and reload
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations()
+            .then(registrations => {
+              for (const registration of registrations) {
+                registration.unregister();
+                console.log('Unregistered service worker for recovery');
+              }
+            })
+            .catch(err => {
+              console.error('Service worker unregister failed:', err);
+            })
+            .finally(() => {
+              // Clear caches
+              if ('caches' in window) {
+                caches.keys().then(cacheNames => {
+                  return Promise.all(
+                    cacheNames.map(cacheName => {
+                      return caches.delete(cacheName);
+                    })
+                  );
+                });
+              }
+              
+              // Redirect to the last known path, or home if none
+              if (lastPath && lastPath !== '/') {
+                window.location.href = lastPath;
+              } else {
+                window.location.href = '/';
+              }
+            });
+        } else {
+          // If no service worker support, just reload the page
+          window.location.reload();
+        }
+      });
+      
+      document.querySelector('.cards-container').after(recoveryButton);
+      
+      // Auto-recovery check - if we have a white screen problem, automate recovery
+      const urlParams = new URLSearchParams(window.location.search);
+      const isRecoveryMode = urlParams.get('recovery') === 'true';
+      
+      if (isRecoveryMode) {
+        setTimeout(() => {
+          recoveryButton.click();
+        }, 1000);
+      }
+    });
+  </script>
+</body>
+</html>
