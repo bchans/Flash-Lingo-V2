@@ -189,15 +189,15 @@ export async function importCards(jsonData: string): Promise<number> {
       createdAt: cardData.createdAt || new Date(),
     };
 
-    const savedCard = await saveCard(card);
+    const savedCardId = await saveCard(card) as number;
 
     // Import scenarios for this card if they exist
     if (cardData.cachedScenarios && Array.isArray(cardData.cachedScenarios)) {
       for (const scenario of cardData.cachedScenarios) {
-        await saveCachedScenario(savedCard.id, scenario);
+        await saveCachedScenario(savedCardId, scenario);
       }
       // Update hasScenario flag
-      await updateCard(savedCard.id, { hasScenario: true });
+      await updateCard(savedCardId, { hasScenario: true });
     }
 
     importedCount++;

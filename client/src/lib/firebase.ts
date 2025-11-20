@@ -7,12 +7,12 @@ import { getFirebaseConfig } from './api-keys';
 // Default Firebase configuration (will be overridden by stored config)
 const defaultFirebaseConfig = {
   apiKey: "",
-  authDomain: "gen-lang-client-0374093525.firebaseapp.com",
-  projectId: "gen-lang-client-0374093525",
-  storageBucket: "gen-lang-client-0374093525.firebasestorage.app",
-  messagingSenderId: "310234006340",
-  appId: "1:310234006340:web:83541f9efbdb780d6ccd11",
-  measurementId: "G-5KPMP6F9ZB"
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+  measurementId: ""
 };
 
 // Initialize Firebase with stored or default config
