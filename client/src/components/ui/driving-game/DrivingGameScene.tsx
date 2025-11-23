@@ -14,6 +14,7 @@ import {
   animateSmokeParticles,
   BOOST_MULTIPLIER,
 } from "./BoostMode";
+import { getAssetUrl } from "@/lib/asset-utils";
 
 // --- Interfaces ---
 interface DrivingGameSceneProps {
@@ -92,12 +93,12 @@ const SIGN_TRIGGER_Z_THRESHOLD = 5.5;
 // No longer needed since we're using React refs instead of window properties
 
 export const CAR_MODELS = [
-  '/car.glb',
-  '/car3.glb',
-  '/car2.glb',
-  '/car4.glb',
-  '/car5.glb',
-  '/car6.glb'
+  getAssetUrl('car.glb'),
+  getAssetUrl('car3.glb'),
+  getAssetUrl('car2.glb'),
+  getAssetUrl('car4.glb'),
+  getAssetUrl('car5.glb'),
+  getAssetUrl('car6.glb')
 ];
 
 export function DrivingGameScene({
@@ -507,7 +508,7 @@ export function DrivingGameScene({
     sceneRef.current = scene;
     // Load the skybox image texture with optimal portion
     const textureLoader = new THREE.TextureLoader();
-    const skyboxTexture = textureLoader.load("/skybox.png", (texture) => {
+    const skyboxTexture = textureLoader.load(getAssetUrl("skybox.png"), (texture) => {
       console.log("Skybox texture loaded successfully");
       trackAssetLoading(); // Track this asset load
 
@@ -532,10 +533,10 @@ export function DrivingGameScene({
       scene.add(cloudsContainerGroup);
 
       const cloudTextures = [
-        "/clouds/cloud1.png",
-        "/clouds/cloud2.png",
-        "/clouds/cloud3.png",
-        "/clouds/cloud4.png",
+        getAssetUrl("clouds/cloud1.png"),
+        getAssetUrl("clouds/cloud2.png"),
+        getAssetUrl("clouds/cloud3.png"),
+        getAssetUrl("clouds/cloud4.png"),
       ];
 
       const numClouds = 4; // Reduced number of clouds

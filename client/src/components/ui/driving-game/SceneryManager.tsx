@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RefObject } from "react";
 import { FenceCreator, PerpFenceConfig } from "./FenceCreator";
+import { getAssetUrl } from "@/lib/asset-utils";
 // --- END CORRECT IMPORTS ---
 
 // --- Configuration ---
@@ -46,23 +47,23 @@ import {
 } from "./FenceCreator";
 
 // --- Asset Paths (Relative to /public folder) ---
-const BUILDING_PALETTE_TEXTURE_PATH = "/textures/colormap.png";
+const BUILDING_PALETTE_TEXTURE_PATH = getAssetUrl("textures/colormap.png");
 // Full list of parts to attempt loading
 const BUILDING_PART_FILES: string[] = [
-    "/buildings/window-white-wide.glb",
+    getAssetUrl("buildings/window-white-wide.glb"),
     // Samples & Steps
-    "/buildings/building-edges-door.glb",
-    "/buildings/building-sample-house-a.glb",
-    "/buildings/building-sample-house-b.glb",
-    "/buildings/building-sample-house-c.glb",
-    "/buildings/building-sample-tower-a.glb",
-    "/buildings/building-sample-tower-b.glb",
-    "/buildings/building-sample-tower-c.glb",
-    "/buildings/building-sample-tower-d.glb",
-    "/buildings/building-steps-narrow.glb",
-    "/buildings/building-steps-narrow-windows.glb",
-    "/buildings/building-steps-narrow-windows-round.glb",
-    "/buildings/building-steps-wide.glb",
+    getAssetUrl("buildings/building-edges-door.glb"),
+    getAssetUrl("buildings/building-sample-house-a.glb"),
+    getAssetUrl("buildings/building-sample-house-b.glb"),
+    getAssetUrl("buildings/building-sample-house-c.glb"),
+    getAssetUrl("buildings/building-sample-tower-a.glb"),
+    getAssetUrl("buildings/building-sample-tower-b.glb"),
+    getAssetUrl("buildings/building-sample-tower-c.glb"),
+    getAssetUrl("buildings/building-sample-tower-d.glb"),
+    getAssetUrl("buildings/building-steps-narrow.glb"),
+    getAssetUrl("buildings/building-steps-narrow-windows.glb"),
+    getAssetUrl("buildings/building-steps-narrow-windows-round.glb"),
+    getAssetUrl("buildings/building-steps-wide.glb"),
 ];
 
 // --- EXACT Filename Lists Based on User Rules ---
@@ -71,21 +72,21 @@ const exactGroundFloorOnlyNames: ReadonlySet<string> = new Set([]);
 const exactGroundOrMiddleFloorNames: ReadonlySet<string> = new Set([]);
 
 const exactMiddleFloorOnlyNames: ReadonlySet<string> = new Set([
-    "/buildings/building-window-balcony.glb",
+    getAssetUrl("buildings/building-window-balcony.glb"),
 ]);
 
 const exactRoofGable1x1Names: ReadonlySet<string> = new Set([
-    "/buildings/roof-gable.glb",
+    getAssetUrl("buildings/roof-gable.glb"),
 ]);
 
 const exactSampleBuildingNames: ReadonlySet<string> = new Set([
-    "/buildings/building-sample-house-a.glb",
-    "/buildings/building-sample-house-b.glb",
-    "/buildings/building-sample-house-c.glb",
-    "/buildings/building-sample-tower-a.glb",
-    "/buildings/building-sample-tower-b.glb",
-    "/buildings/building-sample-tower-c.glb",
-    "/buildings/building-sample-tower-d.glb",
+    getAssetUrl("buildings/building-sample-house-a.glb"),
+    getAssetUrl("buildings/building-sample-house-b.glb"),
+    getAssetUrl("buildings/building-sample-house-c.glb"),
+    getAssetUrl("buildings/building-sample-tower-a.glb"),
+    getAssetUrl("buildings/building-sample-tower-b.glb"),
+    getAssetUrl("buildings/building-sample-tower-c.glb"),
+    getAssetUrl("buildings/building-sample-tower-d.glb"),
 ]);
 
 interface BuildingPart {
@@ -205,13 +206,13 @@ export class SceneryManager {
 
         const loadPromises: Promise<GLTF | null>[] = [];
         const sampleHouseFiles = [
-            "/buildings/building-sample-house-a.glb",
-            "/buildings/building-sample-house-b.glb",
-            "/buildings/building-sample-house-c.glb",
-            "/buildings/building-sample-tower-a.glb",
-            "/buildings/building-sample-tower-b.glb",
-            "/buildings/building-sample-tower-c.glb",
-            "/buildings/building-sample-tower-d.glb",
+            getAssetUrl("buildings/building-sample-house-a.glb"),
+            getAssetUrl("buildings/building-sample-house-b.glb"),
+            getAssetUrl("buildings/building-sample-house-c.glb"),
+            getAssetUrl("buildings/building-sample-tower-a.glb"),
+            getAssetUrl("buildings/building-sample-tower-b.glb"),
+            getAssetUrl("buildings/building-sample-tower-c.glb"),
+            getAssetUrl("buildings/building-sample-tower-d.glb"),
         ];
 
         for (const file of sampleHouseFiles) {

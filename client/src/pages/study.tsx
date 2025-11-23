@@ -5,12 +5,7 @@ import { db } from "@/lib/db";
 import { firebaseAPI } from "@/lib/firebase-api";
 import { base64ToAudio } from "@/lib/api";
 import type { Card, InsertCard, InsertGrammarLesson } from "@shared/schema";
-
-// Helper to get base path-aware asset URLs
-const getAssetUrl = (path: string) => {
-  const base = import.meta.env.BASE_URL || '/';
-  return `${base}${path}`.replace(/\/\//g, '/');
-};
+import { getAssetUrl } from "@/lib/asset-utils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Lightbulb, Target, Zap, Calendar, ChevronLeft, ChevronRight, Trophy, Star, BookOpen, Clock, Car, Settings, Shuffle, Trash2, ChevronDown, ChevronUp, Volume2, VolumeX, Play, Menu } from "lucide-react";

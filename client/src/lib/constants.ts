@@ -1,8 +1,4 @@
-// Helper to get base path-aware asset URLs
-const getAssetUrl = (path: string) => {
-  const base = import.meta.env.BASE_URL || '/';
-  return `${base}${path}`.replace(/\/\//g, '/');
-};
+import { getAssetUrl } from './asset-utils';
 
 export const LANGUAGES = [
   { value: "en", label: "🇺🇸 English", hasCustomFlag: true, flagImage: getAssetUrl("clippy-USA-flag.png") },

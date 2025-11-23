@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCards } from '@/lib/db';
+import { getAssetUrl } from '@/lib/asset-utils';
 
 interface RevolvingCarProps {
   width?: number;
@@ -12,12 +13,12 @@ interface RevolvingCarProps {
 }
 
 const CAR_MODELS = [
-  { path: '/car.glb', name: 'City Cab', requiredCards: 0 },
-  { path: '/car3.glb', name: 'Delivery Car', requiredCards: 10 },
-  { path: '/car2.glb', name: 'Ambulance', requiredCards: 20 },
-  { path: '/car4.glb', name: 'Police Car', requiredCards: 40 },
-  { path: '/car5.glb', name: 'Racing Car', requiredCards: 80 },
-  { path: '/car6.glb', name: 'Vintage Car', requiredCards: 160 }
+  { path: getAssetUrl('car.glb'), name: 'City Cab', requiredCards: 0 },
+  { path: getAssetUrl('car3.glb'), name: 'Delivery Car', requiredCards: 10 },
+  { path: getAssetUrl('car2.glb'), name: 'Ambulance', requiredCards: 20 },
+  { path: getAssetUrl('car4.glb'), name: 'Police Car', requiredCards: 40 },
+  { path: getAssetUrl('car5.glb'), name: 'Racing Car', requiredCards: 80 },
+  { path: getAssetUrl('car6.glb'), name: 'Vintage Car', requiredCards: 160 }
 ];
 
 export function RevolvingCar({ width = 160, height = 160, onCarChange }: RevolvingCarProps) {
@@ -141,7 +142,7 @@ export function RevolvingCar({ width = 160, height = 160, onCarChange }: Revolvi
     const textureLoader = new THREE.TextureLoader();
     
     // First load the texture palette
-    const carTexture = textureLoader.load('/kenney_car_palette.png', (texture) => {
+    const carTexture = textureLoader.load(getAssetUrl('kenney_car_palette.png'), (texture) => {
       console.log('Car texture palette loaded');
       texture.flipY = false; // Important for GLB/GLTF format
     });

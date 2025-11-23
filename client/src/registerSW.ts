@@ -147,11 +147,11 @@ export function registerServiceWorker() {
   }
 }
 
+import { getAssetUrl } from './lib/asset-utils';
+
 async function registerSW() {
   try {
-    // Get the base path from Vite configuration
-    const basePath = import.meta.env.BASE_URL || '/';
-    const swPath = `${basePath}sw.js`.replace(/\/\//g, '/'); // Remove double slashes
+    const swPath = getAssetUrl('sw.js');
     
     const registration = await navigator.serviceWorker.register(swPath, { 
       // This enables the service worker to control pages immediately

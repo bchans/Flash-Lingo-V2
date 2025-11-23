@@ -1,4 +1,5 @@
 import React from "react";
+import { getAssetUrl } from "@/lib/asset-utils";
 
 interface LoadingScreenProps {
   isLoading: boolean;
@@ -23,7 +24,7 @@ export function LoadingScreen({
         left: 0,
         width: "100%",
         height: "100%",
-        backgroundImage: "url('/flashhour_loadingscreen.png')",
+        backgroundImage: `url('${getAssetUrl("flashhour_loadingscreen.png")}')`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         display: "flex",

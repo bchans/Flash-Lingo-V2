@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAchievement } from '@/lib/achievement-context';
 import { X } from 'lucide-react';
-
-// Helper to get base path-aware asset URLs
-const getAssetUrl = (path: string) => {
-  const base = import.meta.env.BASE_URL || '/';
-  return `${base}${path}`.replace(/\/\//g, '/');
-};
+import { getAssetUrl } from '@/lib/asset-utils';
 
 export function AchievementNotification() {
   const { currentAchievement, hideAchievement } = useAchievement();
