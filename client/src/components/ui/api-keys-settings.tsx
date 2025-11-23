@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Eye, EyeOff, Key, Download, Upload, CheckCircle2 } from 'lucide-react';
 import { getAPIKeys, saveAPIKeys, exportAPIKeys, importAPIKeys, type APIKeys } from '@/lib/api-keys';
+import { initializeFirebase } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
 export function APIKeysSettings() {
@@ -31,6 +32,10 @@ export function APIKeysSettings() {
   const handleSave = () => {
     try {
       saveAPIKeys(keys);
+      // Reinitialize Firebase if config changed
+      if (keys.firebaseConfig) {
+        initializeFirebase();
+      }
       setSaved(true);
       toast({
         title: "API Keys Saved",
@@ -84,6 +89,11 @@ export function APIKeysSettings() {
           importAPIKeys(text);
           const loadedKeys = getAPIKeys();
           setKeys(loadedKeys);
+          // Reinitialize Firebase if config was imported
+          if (loadedKeys.firebaseConfig) {
+            console.log('🔄 Reinitializing Firebase with imported config...');
+            initializeFirebase();
+          }
           toast({
             title: "API Keys Imported",
             description: "Your API keys have been imported successfully.",

@@ -1,5 +1,5 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp, FirebaseApp } from "firebase/app";
+import { initializeApp, FirebaseApp, deleteApp, getApps } from "firebase/app";
 import { getAnalytics, Analytics } from "firebase/analytics";
 import { getFunctions, httpsCallable, Functions } from "firebase/functions";
 import { getFirebaseConfig } from './api-keys';
@@ -15,27 +15,72 @@ const defaultFirebaseConfig = {
   measurementId: ""
 };
 
-// Initialize Firebase with stored or default config
-function getFirebaseApp(): FirebaseApp {
-  const storedConfig = getFirebaseConfig();
-  const config = storedConfig || defaultFirebaseConfig;
-  
-  if (!config.apiKey) {
-    console.warn('Firebase API key not configured');
-  }
-  
-  return initializeApp(config);
-}
-
-const app = getFirebaseApp();
+// Cached Firebase instances
+let app: FirebaseApp | null = null;
 let analytics: Analytics | null = null;
 let functions: Functions | null = null;
+let lastConfigJson: string = "";
 
-try {
-  analytics = getAnalytics(app);
-  functions = getFunctions(app);
-} catch (error) {
-  console.warn('Firebase services not fully initialized:', error);
+// Initialize Firebase with stored or default config
+function initializeFirebase(): void {
+  const storedConfig = getFirebaseConfig();
+  const config = storedConfig || defaultFirebaseConfig;
+  const configJson = JSON.stringify(config);
+  
+  // Check if we need to reinitialize (config changed)
+  if (app && configJson === lastConfigJson) {
+    return; // Already initialized with same config
+  }
+  
+  // Delete existing app if config changed
+  if (app && configJson !== lastConfigJson) {
+    console.log('🔄 Firebase config changed, reinitializing...');
+    deleteApp(app).catch(console.error);
+    app = null;
+    analytics = null;
+    functions = null;
+  }
+  
+  // Check if another instance exists (shouldn't happen, but just in case)
+  const existingApps = getApps();
+  if (existingApps.length > 0) {
+    app = existingApps[0];
+    console.log('📱 Using existing Firebase app');
+  } else {
+    if (!config.apiKey || !config.projectId) {
+      console.warn('⚠️ Firebase not configured - missing apiKey or projectId');
+      return;
+    }
+    
+    console.log('🔥 Initializing Firebase with projectId:', config.projectId);
+    app = initializeApp(config);
+  }
+  
+  lastConfigJson = configJson;
+  
+  try {
+    analytics = getAnalytics(app);
+    functions = getFunctions(app);
+    console.log('✅ Firebase initialized successfully');
+  } catch (error) {
+    console.warn('⚠️ Firebase services not fully initialized:', error);
+  }
+}
+
+// Get Firebase app (lazy initialization)
+function getFirebaseApp(): FirebaseApp | null {
+  if (!app) {
+    initializeFirebase();
+  }
+  return app;
+}
+
+// Get Firebase functions (lazy initialization)
+function getFirebaseFunctions(): Functions | null {
+  if (!functions) {
+    initializeFirebase();
+  }
+  return functions;
 }
 
 // Firebase Functions API service using onCall
@@ -50,7 +95,8 @@ export class FirebaseFunctionsAPI {
   }
 
   async getMistralTranslation(text: string, sourceLang: string, targetLang: string): Promise<string> {
-    if (!functions) {
+    const funcs = getFirebaseFunctions();
+    if (!funcs) {
       throw new Error('Firebase not configured. Please add your Firebase config in Settings.');
     }
     
@@ -58,7 +104,7 @@ export class FirebaseFunctionsAPI {
     const currentCount = parseInt(localStorage.getItem('mistralAPICalls') || '0');
     localStorage.setItem('mistralAPICalls', (currentCount + 1).toString());
 
-    const getMistralTranslationCall = httpsCallable(functions, 'getMistralTranslation');
+    const getMistralTranslationCall = httpsCallable(funcs, 'getMistralTranslation');
     
     try {
       const result = await getMistralTranslationCall({ text, sourceLang, targetLang });
@@ -71,7 +117,8 @@ export class FirebaseFunctionsAPI {
   }
 
   async getGeminiResponse(prompt: string): Promise<string> {
-    if (!functions) {
+    const funcs = getFirebaseFunctions();
+    if (!funcs) {
       throw new Error('Firebase not configured. Please add your Firebase config in Settings.');
     }
     
@@ -79,7 +126,7 @@ export class FirebaseFunctionsAPI {
     const currentCount = parseInt(localStorage.getItem('geminiAPICalls') || '0');
     localStorage.setItem('geminiAPICalls', (currentCount + 1).toString());
 
-    const getGeminiResponseCall = httpsCallable(functions, 'getGeminiResponse');
+    const getGeminiResponseCall = httpsCallable(funcs, 'getGeminiResponse');
     
     try {
       const result = await getGeminiResponseCall({ prompt });
@@ -92,7 +139,8 @@ export class FirebaseFunctionsAPI {
   }
 
   async getGeminiTTS(text: string, languageCode: string, voiceName?: string): Promise<{ audioContent: string; languageCode: string; originalText: string }> {
-    if (!functions) {
+    const funcs = getFirebaseFunctions();
+    if (!funcs) {
       throw new Error('Firebase not configured. Please add your Firebase config in Settings.');
     }
     
@@ -100,7 +148,7 @@ export class FirebaseFunctionsAPI {
     const currentCount = parseInt(localStorage.getItem('ttsAPICalls') || '0');
     localStorage.setItem('ttsAPICalls', (currentCount + 1).toString());
 
-    const getGeminiTTSCall = httpsCallable(functions, 'getGeminiTTS');
+    const getGeminiTTSCall = httpsCallable(funcs, 'getGeminiTTS');
     
     try {
       const params = { text, languageCode, voiceName };
@@ -150,11 +198,12 @@ export class FirebaseFunctionsAPI {
   }
 
   async generateGrammarLesson(data: { userCards: any[]; sourceLang: string; targetLang: string; previousLessons: any[] }): Promise<any> {
-    if (!functions) {
+    const funcs = getFirebaseFunctions();
+    if (!funcs) {
       throw new Error('Firebase not configured. Please add your Firebase config in Settings.');
     }
     
-    const generateGrammarLessonCall = httpsCallable(functions, 'generateGrammarLesson');
+    const generateGrammarLessonCall = httpsCallable(funcs, 'generateGrammarLesson');
     try {
       const result = await generateGrammarLessonCall(data);
       return result.data;
@@ -166,4 +215,4 @@ export class FirebaseFunctionsAPI {
 }
 
 export const firebaseFunctionsAPI = FirebaseFunctionsAPI.getInstance();
-export { app, analytics };
+export { getFirebaseApp, analytics, initializeFirebase };
