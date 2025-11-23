@@ -5,7 +5,9 @@ import { usePreferences } from "@/lib/preferences-simple";
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import successImage from "/success-clippy.png";
+import { getAssetUrl } from "@/lib/asset-utils";
+
+const successImage = getAssetUrl("success-clippy.png");
 
 interface Step {
   title: string;

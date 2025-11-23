@@ -1,6 +1,7 @@
 
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { Router } from "wouter";
 import App from "./App";
 import "./index.css";
 import { registerServiceWorker } from "./registerSW";
@@ -42,7 +43,13 @@ try {
   const root = document.getElementById("root");
   if (root) {
     console.log('Rendering root component...');
-    createRoot(root).render(<App />);
+    const base = import.meta.env.BASE_URL || '/';
+    console.log('Router base path:', base);
+    createRoot(root).render(
+      <Router base={base}>
+        <App />
+      </Router>
+    );
     console.log('Initial render complete');
   } else {
     console.error('Root element not found! DOM may not be ready.');
@@ -51,7 +58,12 @@ try {
       const rootRetry = document.getElementById("root");
       if (rootRetry && rootRetry.childElementCount === 0) {
         console.log('Retrying root component render...');
-        createRoot(rootRetry).render(<App />);
+        const base = import.meta.env.BASE_URL || '/';
+        createRoot(rootRetry).render(
+          <Router base={base}>
+            <App />
+          </Router>
+        );
       }
     }, 100);
   }

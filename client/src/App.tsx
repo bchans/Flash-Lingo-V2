@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import Home from "@/pages/home";
 import Create from "@/pages/create";
 import Scan from "@/pages/scan";
@@ -30,6 +30,15 @@ function NotFound() {
 function App() {
   const hasCompletedOnboarding = usePreferences(state => state.hasCompletedOnboarding);
   const languages = usePreferences(state => state.languages);
+  const [location] = useLocation();
+  
+  // Debug logging for routing
+  useEffect(() => {
+    console.log('🔍 Route changed to:', location);
+    console.log('🔍 Full URL:', window.location.href);
+    console.log('🔍 Pathname:', window.location.pathname);
+    console.log('🔍 Onboarding completed:', hasCompletedOnboarding);
+  }, [location, hasCompletedOnboarding]);
   
   // Update document title based on selected language
   useEffect(() => {
