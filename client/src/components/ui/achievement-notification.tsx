@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useAchievement } from '@/lib/achievement-context';
 import { X } from 'lucide-react';
 
+// Helper to get base path-aware asset URLs
+const getAssetUrl = (path: string) => {
+  const base = import.meta.env.BASE_URL || '/';
+  return `${base}${path}`.replace(/\/\//g, '/');
+};
+
 export function AchievementNotification() {
   const { currentAchievement, hideAchievement } = useAchievement();
   const [progress, setProgress] = useState(0);
@@ -43,7 +49,7 @@ export function AchievementNotification() {
         <div className="flex items-start p-4">
           <div className="flex-shrink-0 mr-3">
             <img 
-              src="/success-clippy.png" 
+              src={getAssetUrl("success-clippy.png")} 
               alt="Clippy Achievement" 
               className="h-14 w-14 object-contain"
             />

@@ -5,6 +5,12 @@ import { db } from "@/lib/db";
 import { firebaseAPI } from "@/lib/firebase-api";
 import { base64ToAudio } from "@/lib/api";
 import type { Card, InsertCard, InsertGrammarLesson } from "@shared/schema";
+
+// Helper to get base path-aware asset URLs
+const getAssetUrl = (path: string) => {
+  const base = import.meta.env.BASE_URL || '/';
+  return `${base}${path}`.replace(/\/\//g, '/');
+};
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Lightbulb, Target, Zap, Calendar, ChevronLeft, ChevronRight, Trophy, Star, BookOpen, Clock, Car, Settings, Shuffle, Trash2, ChevronDown, ChevronUp, Volume2, VolumeX, Play, Menu } from "lucide-react";
@@ -1750,7 +1756,7 @@ export default function Study() {
   const SuccessScreen = () => (
     <div className="fixed inset-0 flex items-center justify-center bg-background/90 z-50 animate-in fade-in-0 zoom-in-95 duration-300">
       <div className="bg-card border rounded-lg p-8 max-w-md text-center">
-        <img src="/success-clippy.png" alt="Success" className="h-36 w-36 mx-auto mb-4" />
+        <img src={getAssetUrl("success-clippy.png")} alt="Success" className="h-36 w-36 mx-auto mb-4" />
         <h2 className="text-3xl font-bold mb-4">{successMessage.title}</h2>
         <p className="text-lg text-muted-foreground mb-6">{successMessage.message}</p>
         <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-6">
@@ -3029,7 +3035,7 @@ export default function Study() {
                   <div className="text-center p-8">
                     <div className="mb-6">
                       <img 
-                        src="/clippy_working.png" 
+                        src={getAssetUrl("clippy_working.png")} 
                         alt="Clippy working" 
                         className="w-24 h-24 mx-auto animate-bounce"
                       />

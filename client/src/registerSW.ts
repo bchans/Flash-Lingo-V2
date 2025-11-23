@@ -149,7 +149,11 @@ export function registerServiceWorker() {
 
 async function registerSW() {
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', { 
+    // Get the base path from Vite configuration
+    const basePath = import.meta.env.BASE_URL || '/';
+    const swPath = `${basePath}sw.js`.replace(/\/\//g, '/'); // Remove double slashes
+    
+    const registration = await navigator.serviceWorker.register(swPath, { 
       // This enables the service worker to control pages immediately
       updateViaCache: 'none'
     });
