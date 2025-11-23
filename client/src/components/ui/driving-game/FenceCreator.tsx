@@ -3,6 +3,7 @@
 
 import * as THREE from "three";
 import { GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { getAssetUrl } from "@/lib/asset-utils";
 
 // Configuration constants to control fence appearance and placement
 export interface PerpFenceConfig {
@@ -96,10 +97,10 @@ export class FenceCreator {
         const scene = this.scene;
 
         // Load the fence model
-        this.gltfLoader.load("/buildings/fence.glb", (fenceGltf) => {
+        this.gltfLoader.load(getAssetUrl("buildings/fence.glb"), (fenceGltf) => {
             // Load fence texture
             const fenceTexture = this.textureLoader.load(
-                "/textures/colormaptree.png",
+                getAssetUrl("textures/colormaptree.png"),
                 () => console.log("Perp Fence Texture: loaded successfully"),
                 undefined,
                 (err) => console.error("Failed to load fence texture", err),

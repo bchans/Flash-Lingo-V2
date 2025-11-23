@@ -312,10 +312,10 @@ export class SceneryManager {
         console.log(`TOWER DEBUG: Loaded keys: ${loadedKeys.join(", ")}`);
 
         const towerBuildingPaths = [
-            "/buildings/building-sample-tower-a.glb",
-            "/buildings/building-sample-tower-b.glb",
-            "/buildings/building-sample-tower-c.glb",
-            "/buildings/building-sample-tower-d.glb",
+            getAssetUrl("buildings/building-sample-tower-a.glb"),
+            getAssetUrl("buildings/building-sample-tower-b.glb"),
+            getAssetUrl("buildings/building-sample-tower-c.glb"),
+            getAssetUrl("buildings/building-sample-tower-d.glb"),
         ];
 
         console.log(`TOWER DEBUG: Looking specifically for tower models...`);
@@ -602,9 +602,9 @@ export class SceneryManager {
         if (!this.scene) return;
         console.log("SceneryManager: Creating benches next to lightposts...");
 
-        this.gltfLoader.load("/buildings/bench.glb", (gltf) => {
+        this.gltfLoader.load(getAssetUrl("buildings/bench.glb"), (gltf) => {
             const treeTexture = this.textureLoader.load(
-                "/textures/colormaptree.png",
+                getAssetUrl("textures/colormaptree.png"),
                 () =>
                     console.log(
                         "Bench Texture: colormaptree.png loaded successfully via shared loader.",
@@ -859,7 +859,7 @@ export class SceneryManager {
         const shouldCreateFence = Math.random() < 0.3;
 
         if (shouldCreateFence) {
-            this.gltfLoader.load("/buildings/fence-gate.glb", (gateGltf) => {
+            this.gltfLoader.load(getAssetUrl("buildings/fence-gate.glb"), (gateGltf) => {
                 const boardwalkEdgeX = side * PATH_OFFSET;
                 const gate = gateGltf.scene.clone();
 
@@ -879,7 +879,7 @@ export class SceneryManager {
                 }
 
                 const gateTexture = this.textureLoader.load(
-                    "/textures/colormaptree.png",
+                    getAssetUrl("textures/colormaptree.png"),
                     () =>
                         console.log("Fence Gate Texture: loaded successfully"),
                 );
@@ -910,9 +910,9 @@ export class SceneryManager {
                     `FENCE GATE: Placed at exact boardwalk edge x=${boardwalkEdgeX.toFixed(2)}, z=${houseZ.toFixed(2)}`,
                 );
 
-                this.gltfLoader.load("/buildings/fence.glb", (fenceGltf) => {
+                this.gltfLoader.load(getAssetUrl("buildings/fence.glb"), (fenceGltf) => {
                     const fenceTexture = this.textureLoader.load(
-                        "/textures/colormaptree.png",
+                        getAssetUrl("textures/colormaptree.png"),
                         () =>
                             console.log(
                                 "Fence Segment Texture: loaded successfully",
@@ -1173,9 +1173,9 @@ export class SceneryManager {
             "SceneryManager: Creating lightposts along the boardwalk...",
         );
 
-        this.gltfLoader.load("/buildings/lightpost-single.glb", (gltf) => {
+        this.gltfLoader.load(getAssetUrl("buildings/lightpost-single.glb"), (gltf) => {
             const treeTexture = this.textureLoader.load(
-                "/textures/colormaptree.png",
+                getAssetUrl("textures/colormaptree.png"),
                 () =>
                     console.log(
                         "Lightpost Texture: colormaptree.png loaded successfully via shared loader.",
@@ -1305,8 +1305,8 @@ export class SceneryManager {
         treeTexture.minFilter = THREE.NearestFilter;
 
         const treeModels = [
-            "/buildings/pine.glb",
-            "/buildings/pine-crooked.glb",
+            getAssetUrl("buildings/pine.glb"),
+            getAssetUrl("buildings/pine-crooked.glb"),
         ];
 
         const loadTrees = () => {
