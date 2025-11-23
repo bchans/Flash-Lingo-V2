@@ -64,11 +64,34 @@ const CAR_SPEED_MULTIPLIERS = [
   1.1    // Delivery Car (car6.glb) - 10% faster
 ];
 
-// Highway sign configuration
-const HIGHWAY_SIGN_HEIGHT_VH = 20; // Height of highway signs as % of viewport height
-const HIGHWAY_SIGN_TEXT_SIZE_MULTIPLIER = 2; // Multiplier for text size relative to sign size
-// Derived value for text size in vh units
-const HIGHWAY_SIGN_TEXT_SIZE_VH = Math.min(HIGHWAY_SIGN_HEIGHT_VH * 0.6, 12);
+// Highway sign configuration - responsive sizing
+const getResponsiveSignConfig = () => {
+  const isMobile = window.innerWidth < 768;
+  const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+  
+  if (isMobile) {
+    return {
+      height: 8, // 8vh for mobile
+      fontSize: 'clamp(12px, 3vh, 24px)', // Much smaller on mobile
+      width: '40vw',
+      padding: '1vh 2vw'
+    };
+  } else if (isTablet) {
+    return {
+      height: 10, // 10vh for tablet
+      fontSize: 'clamp(16px, 4vh, 32px)',
+      width: '35vw',
+      padding: '1.5vh 2vw'
+    };
+  } else {
+    return {
+      height: 12, // 12vh for desktop
+      fontSize: 'clamp(20px, 5vh, 40px)',
+      width: '30vw',
+      padding: '2vh 2vw'
+    };
+  }
+};
 
 const ROAD_LENGTH_UNIT = 100;
 // Create smaller segments to prevent visible gaps
@@ -159,6 +182,9 @@ export function DrivingGameScene({
   const [fps, setFps] = useState(0);
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameTimeRef = useRef(performance.now());
+  
+  // --- Responsive Sign Configuration ---
+  const [signConfig, setSignConfig] = useState(getResponsiveSignConfig());
 
   // --- Sliding sign animation state ---
   const [showSignAnimation, setShowSignAnimation] = useState(false);
@@ -220,6 +246,8 @@ export function DrivingGameScene({
         width: window.innerWidth,
         height: window.innerHeight,
       });
+      // Update responsive sign configuration
+      setSignConfig(getResponsiveSignConfig());
     };
 
     window.addEventListener("resize", handleResize);
@@ -2437,14 +2465,18 @@ export function DrivingGameScene({
               transform: "translateX(-50%)",
               backgroundColor: "rgba(0, 0, 0, 0.6)",
               color: "white",
-              padding: "1.5vh 3vw",
+              padding: signConfig.padding,
               borderRadius: "8px",
               zIndex: 100,
               fontFamily: "sans-serif",
-              fontSize: "min(8vh, 72px)",
+              fontSize: signConfig.fontSize,
               fontWeight: "bold",
               textAlign: "center",
-              minWidth: "30vw",
+              minWidth: signConfig.width,
+              maxWidth: "90vw",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
             {word}
@@ -2459,22 +2491,25 @@ export function DrivingGameScene({
                 right: `${rightSignAnimationPosition}px`,
                 backgroundColor: "#009900", // Green highway sign color
                 color: "white",
-                padding: "2vh 2vw",
+                padding: signConfig.padding,
                 borderRadius: "8px",
                 zIndex: 200, // Higher z-index to ensure visibility
                 fontFamily: "sans-serif",
-                fontSize: `min(${HIGHWAY_SIGN_TEXT_SIZE_VH * HIGHWAY_SIGN_TEXT_SIZE_MULTIPLIER}vh, 96px)`,
+                fontSize: signConfig.fontSize,
                 fontWeight: "bold",
                 textAlign: "center",
-                minWidth: "25vw",
-                height: `${HIGHWAY_SIGN_HEIGHT_VH}vh`,
+                minWidth: signConfig.width,
+                maxWidth: "45vw",
+                height: `${signConfig.height}vh`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 boxShadow: "0 4px 8px rgba(0, 0, 0, 0.3)",
                 border: "2px solid #ffffff",
                 transition: "right 0.3s ease-out",
-                width: `calc(${HIGHWAY_SIGN_HEIGHT_VH}vh * 3)`,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {options[1]} {/* Right lane option */}
@@ -2490,22 +2525,25 @@ export function DrivingGameScene({
                 left: `${leftSignAnimationPosition}px`,
                 backgroundColor: "#009900", // Green highway sign color
                 color: "white",
-                padding: "2vh 2vw",
+                padding: signConfig.padding,
                 borderRadius: "8px",
                 zIndex: 200, // Higher z-index to ensure visibility
                 fontFamily: "sans-serif",
-                fontSize: `min(${HIGHWAY_SIGN_TEXT_SIZE_VH * HIGHWAY_SIGN_TEXT_SIZE_MULTIPLIER}vh, 96px)`,
+                fontSize: signConfig.fontSize,
                 fontWeight: "bold",
                 textAlign: "center",
-                minWidth: "25vw",
-                height: `${HIGHWAY_SIGN_HEIGHT_VH}vh`,
+                minWidth: signConfig.width,
+                maxWidth: "45vw",
+                height: `${signConfig.height}vh`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 boxShadow: "0 4px 8px rgba(0, 0, 0, 0.3)",
                 border: "2px solid #ffffff",
                 transition: "left 0.3s ease-out",
-                width: `calc(${HIGHWAY_SIGN_HEIGHT_VH}vh * 3)`,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {options[0]} {/* Left lane option */}
