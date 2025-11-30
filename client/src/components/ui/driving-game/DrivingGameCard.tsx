@@ -142,7 +142,43 @@ export function DrivingGameCard({
   
   // Add state to track if game has been initialized
   const [gameInitialized, setGameInitialized] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(() => {
+    if (typeof window === 'undefined') return 800;
+    return window.visualViewport?.height ?? window.innerHeight;
+  });
   
+  // Keep viewport-aware sizing for mobile overlay
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateViewport = () => {
+      setViewportHeight(window.visualViewport?.height ?? window.innerHeight);
+    };
+
+    updateViewport();
+
+    window.addEventListener('resize', updateViewport);
+    window.addEventListener('orientationchange', updateViewport);
+    window.visualViewport?.addEventListener?.('resize', updateViewport);
+
+    return () => {
+      window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('orientationchange', updateViewport);
+      window.visualViewport?.removeEventListener?.('resize', updateViewport);
+    };
+  }, []);
+
+  const shouldUseMobileOverlay = isMobile && gameStarted && !isFullscreen;
+
+  useEffect(() => {
+    if (!shouldUseMobileOverlay || typeof document === 'undefined') return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [shouldUseMobileOverlay]);
+
   // Shuffle cards on component mount - only for initial setup, not for game mode filtering
   useEffect(() => {
     if (cards.length > 0 && shuffledCards.length === 0) {
@@ -609,8 +645,15 @@ export function DrivingGameCard({
       currentCardIndex: currentIndex + 1
     });
     return (
-      <Card className="w-full overflow-hidden" ref={gameContainerRef}>
-        <CardContent className="p-0 relative h-[600px]">
+      <Card
+        className={`w-full overflow-hidden ${shouldUseMobileOverlay ? 'fixed inset-0 z-50 rounded-none border-0 shadow-none bg-background' : ''}`}
+        ref={gameContainerRef}
+        style={shouldUseMobileOverlay ? { height: `${viewportHeight}px`, width: '100vw' } : undefined}
+      >
+        <CardContent
+          className="p-0 relative"
+          style={shouldUseMobileOverlay ? { height: '100%' } : { height: '600px' }}
+        >
           {/* Use a simple black background while the DrivingGameScene handles the actual loading */}
           <div style={{ width: '100%', height: '100%', backgroundColor: '#000' }}>
             <DrivingGameScene
@@ -670,77 +713,87 @@ export function DrivingGameCard({
       isGameOver
     });
     
+    const overlayCardClass = shouldUseMobileOverlay ? 'fixed inset-0 z-50 rounded-none border-0 shadow-none bg-background' : '';
+    const overlayCardStyle = shouldUseMobileOverlay ? { height: `${viewportHeight}px`, width: '100vw' } : undefined;
+    const containerHeight = shouldUseMobileOverlay ? '100%' : (isFullscreen ? '100vh' : '400px');
+
     return (
       <Card 
-        className={`w-full overflow-hidden ${isFullscreen ? 'fullscreen-game' : ''}`} 
+        className={`w-full overflow-hidden ${isFullscreen ? 'fullscreen-game' : ''} ${overlayCardClass}`} 
         ref={gameContainerRef}
         tabIndex={0}
+        style={overlayCardStyle}
       >
-        <CardContent className="p-0 relative">
-          <div className={`p-4 bg-accent/30 ${isFullscreen ? 'game-header' : ''}`}>
-          <div className="flex justify-end items-center mb-2">
-            <Badge variant="outline" className="text-sm py-1 px-3">
-              Score {score}/{shuffledCards.length || cards.length || 1}
-            </Badge>
+        <CardContent className={`p-0 relative ${shouldUseMobileOverlay ? 'h-full' : ''}`}>
+          <div className={`flex flex-col ${shouldUseMobileOverlay ? 'h-full' : ''}`}>
+            <div className={`p-4 bg-accent/30 ${isFullscreen ? 'game-header' : ''}`}>
+              <div className="flex justify-end items-center mb-2">
+                <Badge variant="outline" className="text-sm py-1 px-3">
+                  Score {score}/{shuffledCards.length || cards.length || 1}
+                </Badge>
+              </div>
+              <Progress value={progress} className="h-2 mb-1" />
             </div>
-            <Progress value={progress} className="h-2 mb-1" />
-          </div>
-          
-          <div className={`p-4 text-center ${isFullscreen ? 'game-info' : ''}`}>
-            <h3 className="text-2xl font-bold mb-4">{currentCard.sourceText}</h3>
-            <p className="text-muted-foreground mb-4">
-              Choose the correct translation by driving to the right lane
-            </p>
-          </div>
-
-          {/* 3D Driving Game Scene */}
-          <div 
-            className="driving-game-scene-container" 
-            style={{ 
-              height: isFullscreen ? '100vh' : '400px',
-              position: 'relative'
-            }}
-            ref={(el) => {
-              if (el) {
-                console.log("PARENT CONTAINER: Scene container rendered", {
-                  position: window.getComputedStyle(el).position,
-                  overflow: window.getComputedStyle(el).overflow,
-                  bounds: el.getBoundingClientRect()
-                });
-              }
-            }}
-          >
-            <DrivingGameScene
-              word={currentCard.sourceText}
-              correctTranslation={currentCard.targetText}
-              options={currentOptions}
-              onSelectLeft={() => makeChoice('left')}
-              onSelectRight={() => makeChoice('right')}
-              progress={progress}
-              showFeedback={showFeedback}
-              onExit={handleExitGame}
-              score={score}
-              totalCards={shuffledCards.length}
-              selectedCarIndex={selectedCarIndex}
-            />
             
+            <div className={`p-4 text-center ${isFullscreen ? 'game-info' : ''}`}>
+              <h3 className="text-2xl font-bold mb-4">{currentCard.sourceText}</h3>
+              <p className="text-muted-foreground mb-4">
+                Choose the correct translation by driving to the right lane
+              </p>
+            </div>
 
-            
-            {/* Touch control areas for mobile */}
-            {isFullscreen && (
-              <>
-                <div 
-                  className="touch-control-left" 
-                  onClick={() => handleGameAction('left')}
-                  aria-label="Drive left"
+            {/* 3D Driving Game Scene */}
+            <div className="flex-1 min-h-[260px]">
+              <div 
+                className="driving-game-scene-container h-full" 
+                style={{ 
+                  height: containerHeight,
+                  width: '100%',
+                  position: 'relative'
+                }}
+                ref={(el) => {
+                  if (el) {
+                    console.log("PARENT CONTAINER: Scene container rendered", {
+                      position: window.getComputedStyle(el).position,
+                      overflow: window.getComputedStyle(el).overflow,
+                      bounds: el.getBoundingClientRect()
+                    });
+                  }
+                }}
+              >
+                <DrivingGameScene
+                  word={currentCard.sourceText}
+                  correctTranslation={currentCard.targetText}
+                  options={currentOptions}
+                  onSelectLeft={() => makeChoice('left')}
+                  onSelectRight={() => makeChoice('right')}
+                  progress={progress}
+                  showFeedback={showFeedback}
+                  onExit={handleExitGame}
+                  score={score}
+                  totalCards={shuffledCards.length}
+                  selectedCarIndex={selectedCarIndex}
                 />
-                <div 
-                  className="touch-control-right" 
-                  onClick={() => handleGameAction('right')}
-                  aria-label="Drive right"
-                />
-              </>
-            )}
+                
+
+                
+                {/* Touch control areas for mobile */}
+                {isFullscreen && (
+                  <>
+                    <div 
+                      className="touch-control-left" 
+                      onClick={() => handleGameAction('left')}
+                      aria-label="Drive left"
+                    />
+                    <div 
+                      className="touch-control-right" 
+                      onClick={() => handleGameAction('right')}
+                      aria-label="Drive right"
+                    />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -1298,7 +1298,7 @@ export class SceneryManager {
         console.log("SceneryManager: Creating foliage around buildings...");
 
         const treeTexture = this.textureLoader.load(
-            "/textures/colormaptree.png",
+            getAssetUrl("textures/colormaptree.png"),
         );
         treeTexture.flipY = false;
         treeTexture.magFilter = THREE.NearestFilter;

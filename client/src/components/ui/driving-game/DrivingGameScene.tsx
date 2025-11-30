@@ -2353,7 +2353,7 @@ export function DrivingGameScene({
           <div
             style={{
               position: "absolute",
-              bottom: "3vh",
+              bottom: "8vh",
               left: "3vw",
               color: "white",
               zIndex: 150,
@@ -2367,6 +2367,31 @@ export function DrivingGameScene({
           >
             Score {score}/{totalCards}
           </div>
+
+          {/* Exit button bottom-left */}
+          {onExit && (
+            <button
+              onClick={onExit}
+              style={{
+                position: "absolute",
+                bottom: "2vh",
+                left: "3vw",
+                backgroundColor: "rgba(0, 0, 0, 0.75)",
+                color: "white",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: "999px",
+                padding: "0.6rem 1.4rem",
+                fontSize: "min(2.3vh, 14px)",
+                fontWeight: 600,
+                zIndex: 200,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(0,0,0,0.4)",
+                pointerEvents: "auto",
+              }}
+            >
+              Exit Game
+            </button>
+          )}
 
           {/* Streak indicator bottom-right */}
           <div
