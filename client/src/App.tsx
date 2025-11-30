@@ -13,6 +13,7 @@ import { AchievementProvider } from "@/lib/achievement-context";
 import { AchievementNotification } from "@/components/ui/achievement-notification";
 import { InstallPrompt } from "@/components/ui/install-prompt";
 import { getLanguageLabel } from "@/lib/constants";
+import { useMemo } from "react";
 
 // 404 Page
 function NotFound() {
@@ -68,8 +69,28 @@ function App() {
     }
   }, []);
 
+  const AppContent = useMemo(() => (
+    <>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/create" component={Create} />
+        <Route path="/scan" component={Scan} />
+        <Route path="/study" component={Study} />
+        <Route path="/study/:mode" component={Study} />
+        <Route path="/stats" component={Stats} />
+        <Route path="/my-cards" component={MyCards} />
+        <Route component={NotFound} />
+      </Switch>
+      
+      <OfflineIndicator />
+      <AchievementNotification />
+      <InstallPrompt />
+    </>
+  ), [location]);
+
   // Show onboarding if needed
   if (!hasCompletedOnboarding) {
+    console.log('🎯 APP: Showing onboarding screen');
     return (
       <>
         <LanguageOnboarding />
@@ -78,23 +99,15 @@ function App() {
     );
   }
 
+  console.log('🎯 APP: Onboarding complete, rendering main app');
+  console.log('🎯 APP: Current location from wouter:', location);
+  console.log('🎯 APP: Languages:', languages);
+  
   return (
     <AchievementProvider>
       <div className="min-h-screen bg-background">
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/create" component={Create} />
-          <Route path="/scan" component={Scan} />
-          <Route path="/study" component={Study} />
-          <Route path="/study/:mode" component={Study} />
-          <Route path="/stats" component={Stats} />
-          <Route path="/my-cards" component={MyCards} />
-          <Route component={NotFound} />
-        </Switch>
-        
-        <OfflineIndicator />
-        <AchievementNotification />
-        <InstallPrompt />
+        {console.log('🎯 APP: Rendering Switch component')}
+        {AppContent}
       </div>
     </AchievementProvider>
   );

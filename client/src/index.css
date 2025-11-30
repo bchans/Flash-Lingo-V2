@@ -31,11 +31,12 @@
 @keyframes particle-explode {
   0% {
     opacity: 1;
-    transform: translate(0, 0) scale(1);
+    transform: translate(-50%, -50%) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(var(--particle-x), var(--particle-y)) scale(0.3);
+    transform: translate(calc(-50% + var(--particle-x)), calc(-50% + var(--particle-y)))
+      scale(0.3);
   }
 }
 

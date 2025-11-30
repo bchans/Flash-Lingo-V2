@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ export function DrivingGameCard({
   onWrongAnswer,
   onSessionComplete
 }: DrivingGameCardProps) {
+  const STREAK_SPEED_INCREMENT = 0.05;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [shuffledCards, setShuffledCards] = useState<CardType[]>([]);
   const [score, setScore] = useState(0);
@@ -68,6 +69,11 @@ export function DrivingGameCard({
   const [correctAnswers, setCorrectAnswers] = useState(0);
   const [incorrectAnswers, setIncorrectAnswers] = useState(0);
   const [gameStatus, setGameStatus] = useState<'intro' | 'playing' | 'complete'>('intro');
+  const [streakCount, setStreakCount] = useState(0);
+  const streakSpeedMultiplier = useMemo(
+    () => 1 + streakCount * STREAK_SPEED_INCREMENT,
+    [streakCount]
+  );
   
   // Game mode system - extensible for future modes
   type GameMode = {
@@ -212,6 +218,11 @@ export function DrivingGameCard({
       const newScore = score + 1;
       setScore(newScore);
       setCorrectAnswers(correctAnswers + 1);
+      setStreakCount(prev => {
+        const next = prev + 1;
+        console.log(`STREAK UPDATE: ${next} correct answers in a row`);
+        return next;
+      });
       onCorrectAnswer(currentCard.id);
       console.log(`SCORE UPDATE: Correct answer! Score: ${newScore}/${shuffledCards.length}`);
       
@@ -221,6 +232,10 @@ export function DrivingGameCard({
       });
     } else {
       setIncorrectAnswers(incorrectAnswers + 1);
+      if (streakCount !== 0) {
+        console.log("STREAK RESET: Incorrect answer");
+      }
+      setStreakCount(0);
       onWrongAnswer(currentCard.id);
       console.log(`SCORE UPDATE: Incorrect answer. Score remains: ${score}/${shuffledCards.length}`);
       
@@ -330,6 +345,7 @@ export function DrivingGameCard({
     setProgress(0);
     setCorrectAnswers(0);
     setIncorrectAnswers(0);
+    setStreakCount(0);
     setIsGameOver(false);
     
     // Always show loading screen first, regardless of previous game state
@@ -364,6 +380,7 @@ export function DrivingGameCard({
     setIsGameOver(false);
     setCorrectAnswers(0);
     setIncorrectAnswers(0);
+    setStreakCount(0);
     setGameStatus('intro');
     setGameStarted(false);
     setGameInitialized(false); // Reset initialization state
@@ -607,8 +624,9 @@ export function DrivingGameCard({
               onExit={handleExitGame}
               score={score}
               totalCards={shuffledCards.length}
-              currentCardIndex={currentIndex + 1}
-              selectedCarIndex={selectedCarIndex}
+            selectedCarIndex={selectedCarIndex}
+            streakSpeedMultiplier={streakSpeedMultiplier}
+            currentStreak={streakCount}
             />
           </div>
         </CardContent>
@@ -660,13 +678,10 @@ export function DrivingGameCard({
       >
         <CardContent className="p-0 relative">
           <div className={`p-4 bg-accent/30 ${isFullscreen ? 'game-header' : ''}`}>
-            <div className="flex justify-between items-center mb-2">
-              <Badge variant="outline" className="text-sm py-1 px-3">
-                Card {currentIndex + 1} of {shuffledCards.length}
-              </Badge>
-              <Badge variant="outline" className="text-sm py-1 px-3">
-                Score: {score}
-              </Badge>
+          <div className="flex justify-end items-center mb-2">
+            <Badge variant="outline" className="text-sm py-1 px-3">
+              Score {score}/{shuffledCards.length || cards.length || 1}
+            </Badge>
             </div>
             <Progress value={progress} className="h-2 mb-1" />
           </div>
@@ -706,7 +721,6 @@ export function DrivingGameCard({
               onExit={handleExitGame}
               score={score}
               totalCards={shuffledCards.length}
-              currentCardIndex={currentIndex + 1}
               selectedCarIndex={selectedCarIndex}
             />
             

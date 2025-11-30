@@ -15,6 +15,7 @@ import {
   BOOST_MULTIPLIER,
 } from "./BoostMode";
 import { getAssetUrl } from "@/lib/asset-utils";
+import { StreakFireIndicator } from "@/components/ui/streak-fire-indicator";
 
 // --- Interfaces ---
 interface DrivingGameSceneProps {
@@ -28,8 +29,9 @@ interface DrivingGameSceneProps {
   onExit?: () => void; // Add exit callback
   score?: number;
   totalCards?: number;
-  currentCardIndex?: number;
   selectedCarIndex?: number;
+  streakSpeedMultiplier?: number;
+  currentStreak?: number;
 }
 
 interface OverheadSign {
@@ -53,6 +55,8 @@ const ANIMATION_DURATION = 500;
 const BASE_FORWARD_SPEED = 0.15; // Base speed for city cab (car.glb)
 const BOOST_SPEED = 0.35; // Faster speed when boost is active
 const BOOST_DURATION = 2000; // Boost lasts for 2 seconds
+const STREAK_SPEED_INCREMENT = 0.05;
+const EXIT_BUTTON_VERTICAL_OFFSET_PX = 20;
 
 // Car speed multipliers based on car index
 const CAR_SPEED_MULTIPLIERS = [
@@ -73,21 +77,24 @@ const getResponsiveSignConfig = () => {
     return {
       height: 8, // 8vh for mobile
       fontSize: 'clamp(12px, 3vh, 24px)', // Much smaller on mobile
-      width: '40vw',
+      minWidth: '20vw', // Smaller minimum width, fits content better
+      maxWidth: '45vw', // Never exceed 45% of screen width
       padding: '1vh 2vw'
     };
   } else if (isTablet) {
     return {
       height: 10, // 10vh for tablet
       fontSize: 'clamp(16px, 4vh, 32px)',
-      width: '35vw',
+      minWidth: '15vw', // Smaller minimum width, fits content better
+      maxWidth: '45vw', // Never exceed 45% of screen width
       padding: '1.5vh 2vw'
     };
   } else {
     return {
       height: 12, // 12vh for desktop
       fontSize: 'clamp(20px, 5vh, 40px)',
-      width: '30vw',
+      minWidth: '15vw', // Smaller minimum width, fits content better
+      maxWidth: '45vw', // Never exceed 45% of screen width
       padding: '2vh 2vw'
     };
   }
@@ -97,6 +104,9 @@ const ROAD_LENGTH_UNIT = 100;
 // Create smaller segments to prevent visible gaps
 const ROAD_SEGMENT_LENGTH = ROAD_LENGTH_UNIT * 0.5; // 50 - smaller segments
 const GROUND_SEGMENT_LENGTH = ROAD_LENGTH_UNIT * 0.75; // 75 - smaller segments
+
+// 3D car scaling
+const CAR_MODEL_SCALE = 1.0; // doubled from 0.5 to make cars larger
 
 // Loop distances determine how far ahead an element is repositioned
 const ROAD_LOOP_DISTANCE = ROAD_SEGMENT_LENGTH * NUM_ROAD_SEGMENTS; // 400
@@ -135,9 +145,14 @@ export function DrivingGameScene({
   onExit,
   score = 0,
   totalCards = 0,
-  currentCardIndex = 1,
   selectedCarIndex = 0,
+  streakSpeedMultiplier = 1,
+  currentStreak = 0,
 }: DrivingGameSceneProps) {
+  const streakSpeedBonusPercent = Math.max(
+    0,
+    Math.round((streakSpeedMultiplier - 1) * 100),
+  );
   // --- Refs ---
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -171,6 +186,18 @@ export function DrivingGameScene({
     onExitRef.current = onExit;
   }, [onExit]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && onExitRef.current) {
+        event.preventDefault();
+        onExitRef.current();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // --- State for Loading Screen ---
   const [isLoading, setIsLoading] = useState(true);
   const isLoadingRef = useRef(true); // Add ref to track loading state
@@ -178,9 +205,7 @@ export function DrivingGameScene({
   const [totalAssets, setTotalAssets] = useState(1); // Start with 1 to avoid division by zero
   const loadingProgressRef = useRef(0);
 
-  // --- FPS Counter State ---
-  const [fps, setFps] = useState(0);
-  const frameTimesRef = useRef<number[]>([]);
+  // --- Frame Timing State ---
   const lastFrameTimeRef = useRef(performance.now());
   
   // --- Responsive Sign Configuration ---
@@ -202,7 +227,11 @@ export function DrivingGameScene({
   const feedbackTimerRef = useRef<number | null>(null);
 
   // --- Dynamic speed calculation based on selected car ---
-  const forwardSpeedRef = useRef(BASE_FORWARD_SPEED * (CAR_SPEED_MULTIPLIERS[selectedCarIndex] || 1.0));
+  const forwardSpeedRef = useRef(
+    BASE_FORWARD_SPEED *
+      (CAR_SPEED_MULTIPLIERS[selectedCarIndex] || 1.0) *
+      streakSpeedMultiplier,
+  );
   
   // --- Boost state for swipe up gesture ---
   const [isBoostActive, setIsBoostActive] = useState(false);
@@ -375,20 +404,23 @@ export function DrivingGameScene({
     }
   }, [options]);
 
-  // Update boost speed reference when car selection changes
+  // Update boost speed reference when car selection or streak speed changes
   useEffect(() => {
-    const newSpeed = BASE_FORWARD_SPEED * (CAR_SPEED_MULTIPLIERS[selectedCarIndex] || 1.0);
+    const carMultiplier = CAR_SPEED_MULTIPLIERS[selectedCarIndex] || 1.0;
+    const newSpeed = BASE_FORWARD_SPEED * carMultiplier * streakSpeedMultiplier;
     forwardSpeedRef.current = newSpeed;
-    
+
     // Update boost speed reference to maintain 2.5x multiplier
-    if (!isBoostActive) {
-      boostSpeedRef.current = newSpeed;
-    } else {
-      boostSpeedRef.current = newSpeed * 2.5;
-    }
-    
-    console.log(`CAR SPEED UPDATE: Selected car ${selectedCarIndex}, Speed: ${newSpeed.toFixed(3)} (${(CAR_SPEED_MULTIPLIERS[selectedCarIndex] || 1.0)}x base)`);
-  }, [selectedCarIndex]);
+    boostSpeedRef.current = isBoostActive ? newSpeed * 2.5 : newSpeed;
+
+    console.log(
+      `CAR SPEED UPDATE: Selected car ${selectedCarIndex}, Speed: ${newSpeed.toFixed(
+        3,
+      )} (car ${carMultiplier.toFixed(2)}x, streak ${streakSpeedMultiplier.toFixed(
+        2,
+      )}x)`,
+    );
+  }, [selectedCarIndex, streakSpeedMultiplier, isBoostActive]);
 
   // Manage boost speed when boost state changes
   useEffect(() => {
@@ -1449,7 +1481,7 @@ export function DrivingGameScene({
         trackAssetLoading();
 
         const loadedCar = gltf.scene;
-        loadedCar.scale.set(0.5, 0.5, 0.5);
+        loadedCar.scale.set(CAR_MODEL_SCALE, CAR_MODEL_SCALE, CAR_MODEL_SCALE);
         loadedCar.rotation.y = Math.PI;
         // Move car forward to avoid being covered by UI
         loadedCar.position.set(0, 0.1, CAMERA_POSITION_Z - 5);
@@ -2278,24 +2310,6 @@ export function DrivingGameScene({
 
     renderer.render(scene, camera);
 
-    // --- 6. Calculate and Update FPS ---
-    // Only update FPS counter when game is not paused
-    if (!isPausedRef.current) {
-      // We already have timing information from our frame limiter
-      const frameTime = elapsed > 0 ? elapsed : 16.67; // Use elapsed time or default to ~60fps
-
-      frameTimesRef.current.push(frameTime);
-      if (frameTimesRef.current.length > 60) {
-        frameTimesRef.current.shift();
-      }
-
-      const averageFrameTime =
-        frameTimesRef.current.reduce((a, b) => a + b, 0) /
-        frameTimesRef.current.length;
-      const currentFps = Math.round(1000 / averageFrameTime);
-      setFps(currentFps);
-    }
-
     // We already requested the next frame at the beginning of this function
     // No need to call requestAnimationFrame again
   }
@@ -2307,8 +2321,10 @@ export function DrivingGameScene({
   };
 
   // --- Render Component ---
+  // Note: The outer div provides positioning context for all absolutely positioned UI overlays
+  // The inner containerRef div is where Three.js mounts the canvas
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
       {/* Boost Mode Logic Component */}
       <BoostMode
         isBoostActive={isBoostActive}
@@ -2330,130 +2346,56 @@ export function DrivingGameScene({
       {/* Free Roam Mode UI Overlay */}
       <FreeRoamModeOverlay isEnabled={isFreeRoamMode} />
 
-      {/* FPS Counter */}
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          right: "10px",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          color: "white",
-          padding: "5px 10px",
-          borderRadius: "5px",
-          zIndex: 100,
-          fontFamily: "monospace",
-        }}
-      >
-        FPS: {fps}
-      </div>
-
-      {/* Exit button - Always visible during gameplay */}
-      {onExit && (
-        <button
-          onClick={onExit}
-          style={{
-            position: "absolute",
-            top: "20px",
-            right: "20px",
-            backgroundColor: "rgba(0, 0, 0, 0.8)",
-            color: "white",
-            border: "2px solid white",
-            borderRadius: "8px",
-            padding: "12px 20px",
-            fontSize: "16px",
-            fontWeight: "bold",
-            cursor: "pointer",
-            zIndex: 300,
-            transition: "background-color 0.2s",
-            boxShadow: "0 4px 8px rgba(0, 0, 0, 0.5)",
-          }}
-          onMouseEnter={(e) => {
-            (e.target as HTMLButtonElement).style.backgroundColor = "rgba(255, 0, 0, 0.8)";
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLButtonElement).style.backgroundColor = "rgba(0, 0, 0, 0.8)";
-          }}
-        >
-          Exit (ESC)
-        </button>
-      )}
-
-      {/* Free Roam Toggle Button */}
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          left: "10px",
-          backgroundColor: isFreeRoamMode
-            ? "rgba(76, 175, 80, 0.8)"
-            : "rgba(0, 0, 0, 0.6)",
-          color: "white",
-          padding: "5px 10px",
-          borderRadius: "5px",
-          zIndex: 100,
-          fontFamily: "monospace",
-          cursor: "pointer",
-          border: `1px solid ${isFreeRoamMode ? "#fff" : "transparent"}`,
-          userSelect: "none",
-        }}
-        onClick={() => handleFreeRoamToggle(!isFreeRoamMode)}
-      >
-        {isFreeRoamMode ? "Exit Free Roam (F)" : "Free Roam Mode (F)"}
-      </div>
-
       {/* Game UI at bottom of screen */}
       {!isLoading && !isPaused && (
         <>
-          {/* Score display in bottom right */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: "3vh",
-              right: "3vw",
-              backgroundColor: "rgba(0, 0, 0, 0.6)",
-              color: "white",
-              padding: "1vh 1.5vw",
-              borderRadius: "20px",
-              zIndex: 150,
-              fontFamily: "sans-serif",
-              fontSize: "min(2.5vh, 16px)",
-              fontWeight: "bold",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
-              pointerEvents: "none",
-            }}
-            ref={(el) => {
-              if (el) {
-                console.log(`SCORE DISPLAY: Rendering Score: ${score}/${totalCards}`);
-              }
-            }}
-          >
-            Score: {score}/{totalCards}
-          </div>
-
-          {/* Card counter in bottom left */}
+          {/* Score bottom-left */}
           <div
             style={{
               position: "absolute",
               bottom: "3vh",
               left: "3vw",
-              backgroundColor: "rgba(0, 0, 0, 0.6)",
               color: "white",
-              padding: "1vh 1.5vw",
-              borderRadius: "20px",
               zIndex: 150,
               fontFamily: "sans-serif",
               fontSize: "min(2.5vh, 16px)",
               fontWeight: "bold",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
+              textAlign: "left",
+              textShadow: "0 2px 8px rgba(0,0,0,0.8)",
               pointerEvents: "none",
             }}
-            ref={(el) => {
-              if (el) {
-                console.log(`CARD COUNTER DISPLAY: Rendering Card: ${currentCardIndex}/${totalCards}`);
-              }
+          >
+            Score {score}/{totalCards}
+          </div>
+
+          {/* Streak indicator bottom-right */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: "3vh",
+              right: "3vw",
+              color: "white",
+              zIndex: 150,
+              fontFamily: "sans-serif",
+              textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "4px",
+              pointerEvents: "none",
             }}
           >
-            Card {currentCardIndex}/{totalCards}
+            <StreakFireIndicator
+              streak={currentStreak}
+              label="Streak"
+              variant="compact"
+              className="text-white"
+            />
+            {currentStreak > 0 && (
+              <div style={{ fontSize: "min(2vh, 12px)" }}>
+                +{streakSpeedBonusPercent}% speed
+              </div>
+            )}
           </div>
 
           {/* Current word to translate at bottom center - updates with highway signs */}
@@ -2472,8 +2414,8 @@ export function DrivingGameScene({
               fontSize: signConfig.fontSize,
               fontWeight: "bold",
               textAlign: "center",
-              minWidth: signConfig.width,
-              maxWidth: "90vw",
+              minWidth: signConfig.minWidth,
+              maxWidth: signConfig.maxWidth,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -2487,7 +2429,7 @@ export function DrivingGameScene({
             <div
               style={{
                 position: "absolute",
-                top: "10vh",
+                top: `${EXIT_BUTTON_VERTICAL_OFFSET_PX}px`,
                 right: `${rightSignAnimationPosition}px`,
                 backgroundColor: "#009900", // Green highway sign color
                 color: "white",
@@ -2498,8 +2440,8 @@ export function DrivingGameScene({
                 fontSize: signConfig.fontSize,
                 fontWeight: "bold",
                 textAlign: "center",
-                minWidth: signConfig.width,
-                maxWidth: "45vw",
+                minWidth: signConfig.minWidth,
+                maxWidth: signConfig.maxWidth,
                 height: `${signConfig.height}vh`,
                 display: "flex",
                 alignItems: "center",
@@ -2521,7 +2463,7 @@ export function DrivingGameScene({
             <div
               style={{
                 position: "absolute",
-                top: "10vh",
+                top: `${EXIT_BUTTON_VERTICAL_OFFSET_PX}px`,
                 left: `${leftSignAnimationPosition}px`,
                 backgroundColor: "#009900", // Green highway sign color
                 color: "white",
@@ -2532,8 +2474,8 @@ export function DrivingGameScene({
                 fontSize: signConfig.fontSize,
                 fontWeight: "bold",
                 textAlign: "center",
-                minWidth: signConfig.width,
-                maxWidth: "45vw",
+                minWidth: signConfig.minWidth,
+                maxWidth: signConfig.maxWidth,
                 height: `${signConfig.height}vh`,
                 display: "flex",
                 alignItems: "center",
@@ -2637,6 +2579,7 @@ export function DrivingGameScene({
         />
       </div>
 
+      {/* Three.js Canvas Container - This is where the renderer mounts */}
       <div
         ref={containerRef}
         style={{

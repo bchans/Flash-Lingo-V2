@@ -1,49 +1,50 @@
 // Maximum aggressive caching Service Worker for FlashLingo
 // This will cache EVERYTHING from our origin for offline use
 
-const CACHE_NAME = 'flashlingo-v16';
+const CACHE_NAME = 'flashlingo-v18';
+const BASE_PATH = '/Flash-Lingo-V2';
 
 // The main assets to precache (only files that actually exist)
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/offline.html',
-  '/icon.svg',
-  '/icon-192.svg',
-  '/icon-512.svg',
-  '/clippy_working.png',
-  '/success-clippy.png',
-  '/clippy-french-flag.png',
-  '/clippy-vietnamese-flag.png',
-  '/clippy-german-flag.png',
-  '/clippy-italian-flag.png',
-  '/clippy-japanese-flag.png',
-  '/clippy-korean-flag.png',
-  '/clippy-portugese-flag.png',
-  '/clippy-spanish-flag.png',
-  '/clippy-USA-flag.png',
-  '/clippy-chinese-flag.png',
-  '/clippy-russian-flag.png',
+  `${BASE_PATH}/`,
+  `${BASE_PATH}/index.html`,
+  `${BASE_PATH}/manifest.json`,
+  `${BASE_PATH}/offline.html`,
+  `${BASE_PATH}/icon.svg`,
+  `${BASE_PATH}/icon-192.svg`,
+  `${BASE_PATH}/icon-512.svg`,
+  `${BASE_PATH}/clippy_working.png`,
+  `${BASE_PATH}/success-clippy.png`,
+  `${BASE_PATH}/clippy-french-flag.png`,
+  `${BASE_PATH}/clippy-vietnamese-flag.png`,
+  `${BASE_PATH}/clippy-german-flag.png`,
+  `${BASE_PATH}/clippy-italian-flag.png`,
+  `${BASE_PATH}/clippy-japanese-flag.png`,
+  `${BASE_PATH}/clippy-korean-flag.png`,
+  `${BASE_PATH}/clippy-portugese-flag.png`,
+  `${BASE_PATH}/clippy-spanish-flag.png`,
+  `${BASE_PATH}/clippy-USA-flag.png`,
+  `${BASE_PATH}/clippy-chinese-flag.png`,
+  `${BASE_PATH}/clippy-russian-flag.png`,
   // Driving game assets
-  '/car.glb',
-  '/car2.glb',
-  '/car3.glb',
-  '/car4.glb',
-  '/car5.glb',
-  '/car6.glb',
-  '/skybox.png',
-  '/kenney_car_palette.png',
-  '/driving-game-intro.png',
-  '/clouds/cloud1.png',
-  '/clouds/cloud2.png',
-  '/clouds/cloud3.png',
-  '/clouds/cloud4.png'
+  `${BASE_PATH}/car.glb`,
+  `${BASE_PATH}/car2.glb`,
+  `${BASE_PATH}/car3.glb`,
+  `${BASE_PATH}/car4.glb`,
+  `${BASE_PATH}/car5.glb`,
+  `${BASE_PATH}/car6.glb`,
+  `${BASE_PATH}/skybox.png`,
+  `${BASE_PATH}/kenney_car_palette.png`,
+  `${BASE_PATH}/driving-game-intro.png`,
+  `${BASE_PATH}/clouds/cloud1.png`,
+  `${BASE_PATH}/clouds/cloud2.png`,
+  `${BASE_PATH}/clouds/cloud3.png`,
+  `${BASE_PATH}/clouds/cloud4.png`
 ];
 
-// SPA routes for our app
+// SPA routes for our app (relative to BASE_PATH)
 const APP_ROUTES = [
-  '/',
+  '',
   '/create',
   '/study', 
   '/study/flashcard',
@@ -72,12 +73,12 @@ self.addEventListener('install', (event) => {
           console.log('Service Worker: Static assets cached successfully');
 
           // Then cache all SPA routes with index.html content
-          return fetch('/index.html').then(response => {
+          return fetch(`${BASE_PATH}/index.html`).then(response => {
             const indexHtml = response.clone();
 
             // Promise for caching all routes
             const routePromises = APP_ROUTES.map(route => {
-              return cache.put(new Request(route), indexHtml.clone());
+              return cache.put(new Request(`${BASE_PATH}${route}`), indexHtml.clone());
             });
 
             return Promise.all(routePromises);
@@ -174,9 +175,12 @@ self.addEventListener('fetch', (event) => {
           }
           
           // First, check if this is the root path or one of our explicit SPA routes
-          if (path === '/' || APP_ROUTES.includes(path)) {
+          // Strip BASE_PATH from the beginning of path to match against APP_ROUTES
+          const relativePath = path.startsWith(BASE_PATH) ? path.substring(BASE_PATH.length) : path;
+          
+          if (relativePath === '' || relativePath === '/' || APP_ROUTES.includes(relativePath)) {
             console.log('Service Worker: Known route detected, serving index.html for:', path);
-            const indexResponse = await caches.match('/index.html');
+            const indexResponse = await caches.match(`${BASE_PATH}/index.html`);
             if (indexResponse) return indexResponse;
           }
           
@@ -186,13 +190,14 @@ self.addEventListener('fetch', (event) => {
             // Skip routes that don't have parameters
             if (!route.includes(':')) {
               // Check if the current path is a child of a known route
-              // For example, /study/custom-mode is a child of /study
-              return path.startsWith(route + '/') || path === route;
+              // For example, /Flash-Lingo-V2/study/custom-mode is a child of /study
+              const fullRoute = `${BASE_PATH}${route}`;
+              return path.startsWith(fullRoute + '/') || path === fullRoute || relativePath.startsWith(route + '/') || relativePath === route;
             }
             
             // For routes with parameters, like /study/:mode
             const routeParts = route.split('/');
-            const pathParts = path.split('/');
+            const pathParts = relativePath.split('/');
             
             // Routes must have the same number of parts
             if (routeParts.length !== pathParts.length) return false;
@@ -206,7 +211,7 @@ self.addEventListener('fetch', (event) => {
           // If we identified this as an app route, serve index.html
           if (maybeAppRoute) {
             console.log('Service Worker: SPA route detected (from patterns), serving index.html for:', path);
-            const indexResponse = await caches.match('/index.html');
+            const indexResponse = await caches.match(`${BASE_PATH}/index.html`);
             if (indexResponse) return indexResponse;
           }
           
@@ -230,9 +235,9 @@ self.addEventListener('fetch', (event) => {
             
             // 3. As a last resort for SPA-like paths, return index.html
             // This helps with refresh on deep links
-            if (path.startsWith('/') && path.split('/').length >= 2) {
+            if ((path.startsWith(BASE_PATH) || path.startsWith('/')) && path.split('/').length >= 2) {
               console.log('Service Worker: Network failed, assuming SPA route:', path);
-              const indexResponse = await caches.match('/index.html');
+              const indexResponse = await caches.match(`${BASE_PATH}/index.html`);
               if (indexResponse) return indexResponse;
             }
             
@@ -245,7 +250,7 @@ self.addEventListener('fetch', (event) => {
           // If everything fails, try to serve index.html for SPA navigation
           console.log('Service Worker: Falling back to index.html');
           try {
-            const indexResponse = await caches.match('/index.html');
+            const indexResponse = await caches.match(`${BASE_PATH}/index.html`);
             if (indexResponse) return indexResponse;
           } catch (e) {
             console.error('Failed to serve index.html fallback:', e);
@@ -254,10 +259,10 @@ self.addEventListener('fetch', (event) => {
           // If even that fails, serve offline page with recovery info
           console.log('Service Worker: Final fallback to offline.html');
           try {
-            const offlineResponse = await caches.match('/offline.html');
+            const offlineResponse = await caches.match(`${BASE_PATH}/offline.html`);
             if (offlineResponse) {
               // Add recovery url parameter so offline page knows to attempt recovery
-              const offlineUrl = new URL('/offline.html', self.location.origin);
+              const offlineUrl = new URL(`${BASE_PATH}/offline.html`, self.location.origin);
               offlineUrl.searchParams.set('recovery', 'true');
               offlineUrl.searchParams.set('from', url.pathname);
               

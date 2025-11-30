@@ -45,6 +45,10 @@ try {
     console.log('Rendering root component...');
     const base = import.meta.env.BASE_URL || '/';
     console.log('Router base path:', base);
+    console.log('import.meta.env.MODE:', import.meta.env.MODE);
+    console.log('import.meta.env.DEV:', import.meta.env.DEV);
+    console.log('import.meta.env.PROD:', import.meta.env.PROD);
+    console.log('process.env.NODE_ENV:', import.meta.env.NODE_ENV);
     createRoot(root).render(
       <Router base={base}>
         <App />

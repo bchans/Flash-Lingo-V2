@@ -34,6 +34,11 @@ export class CardDatabase extends Dexie {
       cards: '++id, sourceLang, targetLang, learned, proficiency, lastStudied, category, categoryEmoji, cachedScenarios, hasScenario, audioFileSource, audioFileTarget',
       grammarLessons: '++id, createdAt, title, explanation, exercises, newWords, completed'
     });
+    // Add compound index to speed up imports that match on source+target text
+    this.version(9).stores({
+      cards: '++id,[sourceText+targetText], sourceLang, targetLang, learned, proficiency, lastStudied, category, categoryEmoji, cachedScenarios, hasScenario, audioFileSource, audioFileTarget',
+      grammarLessons: '++id, createdAt, title, explanation, exercises, newWords, completed'
+    });
   }
 }
 
@@ -282,10 +287,13 @@ export async function importCards(jsonData: string): Promise<number> {
   }
 
   // Import API keys if present
-  if (data.apiKeys) {
+  // Handle both formats: nested under 'apiKeys' property or at root level
+  const apiKeysToImport = data.apiKeys || (data.geminiApiKey || data.firebaseApiKey || data.mistralApiKey ? data : null);
+  
+  if (apiKeysToImport) {
     const { saveAPIKeys } = await import('./api-keys');
     try {
-      saveAPIKeys(data.apiKeys);
+      saveAPIKeys(apiKeysToImport);
       console.log('✅ API keys imported successfully');
     } catch (error) {
       console.error('Failed to import API keys:', error);

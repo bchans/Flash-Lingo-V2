@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Lightbulb, Target, Zap, Calendar, ChevronLeft, ChevronRight, Trophy, Star, BookOpen, Clock, Car, Settings, Shuffle, Trash2, ChevronDown, ChevronUp, Volume2, VolumeX, Play, Menu } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Card as CardUI, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StreakFireIndicator } from "@/components/ui/streak-fire-indicator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -416,9 +417,6 @@ export default function Study() {
   const [showSparkleEffect, setShowSparkleEffect] = useState(false); // Sparkle effect state
   const [selectedTrainingMode, setSelectedTrainingMode] = useState<'all' | 'unlearned' | 'categories' | string | null>(null); // Pre-selected training mode
   const [showCategories, setShowCategories] = useState(false); // Show category selection
-  const [showParticleEffect, setShowParticleEffect] = useState(false); // Particle effect state
-  const [particleIntensity, setParticleIntensity] = useState(1); // Particle intensity based on str
-  const [particleKey, setParticleKey] = useState(0); // Unique key to prevent double renderingeak
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [areOptionsVisible, setAreOptionsVisible] = useState(true);
   const [audioLoading, setAudioLoading] = useState<boolean>(false);
@@ -1353,33 +1351,10 @@ export default function Study() {
     setCardSlideDirection(learned ? 'right' : 'left');
     console.log('CARD TRANSITION - Slide direction set:', learned ? 'right' : 'left', 'for card:', cards[currentCardIndex]?.sourceText);
     
-    // Update streak and trigger particle effects for correct/incorrect answers
+    // Update streak for correct/incorrect answers
     if (learned) {
       const newStreak = correctStreak + 1;
       setCorrectStreak(newStreak);
-      setParticleIntensity(Math.min(newStreak, 10)); // Cap intensity at 10
-      
-      // Only trigger particles for flashcard mode to prevent double effects
-      // Skip particles for the last card to show success screen immediately
-      if (selectedMode === 'flashcard' && currentCardIndex < cards.length - 1) {
-        console.log('PARTICLE DEBUG - Triggering particle effect for streak:', newStreak, 'Mode:', selectedMode);
-        console.log('PARTICLE DEBUG - Setting particle effect to true, current state:', showParticleEffect);
-        
-        // Use a unique key to prevent double rendering on state changes
-        const newParticleKey = Date.now();
-        console.log('PARTICLE DEBUG - Creating new particle key:', newParticleKey);
-        setParticleKey(newParticleKey);
-        setShowParticleEffect(true);
-        
-        // Hide particle effect after explosion
-        setTimeout(() => {
-          console.log('PARTICLE DEBUG - Hiding particle effect via timeout, key:', newParticleKey);
-          setShowParticleEffect(false);
-        }, 800);
-      } else if (selectedMode === 'flashcard' && currentCardIndex >= cards.length - 1) {
-        console.log('PARTICLE DEBUG - Skipping particle effect for last card');
-      }
-      
       // Check if this is a new streak record
       const currentRecord = parseInt(localStorage.getItem('streakRecord') || '0');
       if (newStreak > currentRecord) {
@@ -1393,7 +1368,6 @@ export default function Study() {
     } else {
       // Reset streak on wrong answer
       setCorrectStreak(0);
-      setParticleIntensity(1);
     }
     
     // Wait for slide animation to complete, then teleport the card
@@ -1447,7 +1421,7 @@ export default function Study() {
         console.log('CARD TRANSITION - Moving to next card:', currentCardIndex + 1, 'card text:', cards[currentCardIndex + 1]?.sourceText);
         setCurrentCardIndex(prev => {
           const newIndex = prev + 1;
-          console.log('CARD TRANSITION - Index changed from', prev, 'to', newIndex, 'showParticleEffect:', showParticleEffect);
+          console.log('CARD TRANSITION - Index changed from', prev, 'to', newIndex);
           return newIndex;
         });
         
@@ -1995,74 +1969,15 @@ export default function Study() {
       {/* Reserved streak space for flashcard mode - always present to prevent layout shift */}
       {selectedMode === 'flashcard' && (
         <div className="flex justify-center mb-4">
-          <div className="h-8 flex items-center justify-center min-w-[120px]">
-            {correctStreak > 0 && (
-              <div className="flex items-center gap-2 text-green-600 animate-in fade-in-0 slide-in-from-top-1 duration-300">
-                <span className="text-sm font-medium">Streak:</span>
-                <span className="text-lg font-bold relative inline-block" id="streak-number">
-                  {correctStreak}
-                  {/* Particle Effect System positioned at the center of the streak number */}
-                  {showParticleEffect && (
-                    <div 
-                      key={`particle-container-${particleKey}`}
-                      className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
-                    >
-                      {/* Green particles exploding from streak number center */}
-                      {Array.from({ length: particleIntensity * 4 }).map((_, i) => {
-                        const angle = (i / (particleIntensity * 4)) * 2 * Math.PI;
-                        const distance = 60 + particleIntensity * 15; // Increased distance for more visible movement
-                        const x = Math.cos(angle) * distance;
-                        const y = Math.sin(angle) * distance;
-                        
-                        // Particle creation without excessive logging
-                        
-                        return (
-                          <div
-                            key={`primary-${i}-${particleKey}`}
-                            className="absolute w-3 h-3 bg-green-400 rounded-full"
-                            style={{
-                              left: '0px',
-                              top: '0px',
-                              '--particle-x': `${x}px`,
-                              '--particle-y': `${y}px`,
-                              animation: `particle-explode ${1 + Math.random() * 0.3}s ease-out forwards`,
-                              animationDelay: `${0.1 + i * 0.02}s`,
-                              opacity: 0
-                            } as React.CSSProperties & { '--particle-x': string; '--particle-y': string }}
-                          />
-                        );
-                      })}
-                      {/* Secondary wave of smaller particles for higher streaks */}
-                      {particleIntensity >= 3 && Array.from({ length: particleIntensity * 2 }).map((_, i) => {
-                        const angle = (i / (particleIntensity * 2)) * 2 * Math.PI + 0.5;
-                        const distance = 80 + particleIntensity * 20;
-                        const x = Math.cos(angle) * distance;
-                        const y = Math.sin(angle) * distance;
-                        const animationDuration = 1.2 + Math.random() * 0.4;
-                        const delay = 0.3 + i * 0.03;
-                        
-                        return (
-                          <div
-                            key={`secondary-${i}-${particleKey}`}
-                            className="absolute w-2 h-2 bg-yellow-300 rounded-full"
-                            style={{
-                              left: '0px',
-                              top: '0px',
-                              '--particle-x': `${x}px`,
-                              '--particle-y': `${y}px`,
-                              animation: `particle-explode ${animationDuration}s ease-out forwards`,
-                              animationDelay: `${delay}s`,
-                              opacity: 0
-                            } as React.CSSProperties & { '--particle-x': string; '--particle-y': string }}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </span>
-                <span className="text-lg">🔥</span>
-              </div>
-            )}
+          <div className="h-8 flex items-center justify-center min-w-[140px]">
+            <StreakFireIndicator
+              streak={correctStreak}
+              disabled={
+                selectedMode !== "flashcard" ||
+                currentCardIndex >= cards.length - 1 ||
+                showSuccessScreen
+              }
+            />
           </div>
         </div>
       )}

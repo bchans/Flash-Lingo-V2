@@ -2,9 +2,9 @@
   "name": "FlashLingo",
   "short_name": "FlashLingo",
   "description": "Learn languages with AI-powered flashcards that work offline",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "id": "/Flash-Lingo-V2/",
+  "start_url": "/Flash-Lingo-V2/",
+  "scope": "/Flash-Lingo-V2/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#ffffff",
@@ -12,25 +12,25 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icon-192.svg",
+      "src": "/Flash-Lingo-V2/icon-192.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.svg",
+      "src": "/Flash-Lingo-V2/icon-512.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icon-192.svg",
+      "src": "/Flash-Lingo-V2/icon-192.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-512.svg",
+      "src": "/Flash-Lingo-V2/icon-512.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"
@@ -39,12 +39,12 @@
   "shortcuts": [
     {
       "name": "Create Card",
-      "url": "/create",
+      "url": "/Flash-Lingo-V2/create",
       "description": "Create a new flashcard"
     },
     {
       "name": "Study",
-      "url": "/study",
+      "url": "/Flash-Lingo-V2/study",
       "description": "Practice flashcards"
     }
   ]

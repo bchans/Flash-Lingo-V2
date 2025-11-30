@@ -30,8 +30,13 @@ export async function setupVite(app: Express, server: Server) {
     https: false, // Set to true if you need HTTPS for mobile testing
   };
 
+  const resolvedConfig =
+    typeof viteConfig === "function"
+      ? await viteConfig({ mode: "development" })
+      : await viteConfig;
+
   const vite = await createViteServer({
-    ...viteConfig,
+    ...resolvedConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
@@ -40,7 +45,10 @@ export async function setupVite(app: Express, server: Server) {
         process.exit(1);
       },
     },
-    server: serverOptions,
+    server: {
+      ...resolvedConfig.server,
+      ...serverOptions,
+    },
     appType: "custom",
   });
 

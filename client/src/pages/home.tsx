@@ -17,6 +17,9 @@ import {
 import { APIKeysSettings } from "@/components/ui/api-keys-settings";
 
 export default function Home() {
+  console.log('🏠 HOME: Component rendering');
+  console.log('🏠 HOME: Window location:', window.location.href);
+  
   const {
     languages,
     useEmojiMode,
@@ -29,8 +32,11 @@ export default function Home() {
     updateMenuOrder
   } = usePreferences();
 
+  console.log('🏠 HOME: Languages from preferences:', languages);
+  
   // Get the language label and ensure it exists
   const learningLanguage = getLanguageLabel(languages.learningLang || 'en');
+  console.log('🏠 HOME: Learning language label:', learningLanguage);
 
   // State for the rotating hint system
   const [subtitle, setSubtitle] = useState<string>(`You're learning ${learningLanguage} with AI-powered flashcards`);
@@ -50,6 +56,7 @@ export default function Home() {
 
   // Effect for rotating hints
   useEffect(() => {
+    console.log('🏠 HOME: useEffect running for hints');
     // All possible hint names in the precise order we want to show them
     const hintNames: HintName[] = [
       'styleToggle', 
@@ -68,6 +75,7 @@ export default function Home() {
 
     // Initial state should be default message
     setSubtitle(defaultMessage);
+    console.log('🏠 HOME: Subtitle set to:', defaultMessage);
 
     console.log(`Active hints: ${activeHints.length}`);
 

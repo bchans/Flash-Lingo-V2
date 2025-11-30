@@ -89,7 +89,8 @@ export default function MyCards() {
   }
 
   async function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const inputElement = event.target;
+    const file = inputElement.files?.[0];
     if (!file) return;
 
     try {
@@ -98,13 +99,26 @@ export default function MyCards() {
 
       reader.onload = async (e) => {
         try {
-          const jsonData = e.target?.result as string;
+          const jsonData = e.target?.result as string | null;
+          if (!jsonData) {
+            throw new Error("No file contents were read.");
+          }
+
+          let parsedData: any;
+          try {
+            parsedData = JSON.parse(jsonData);
+          } catch (parseError) {
+            throw new SyntaxError("Invalid JSON structure");
+          }
+
           const importedCount = await importCards(jsonData);
-          await loadCards();
+          
+          // Reload cards and force re-render
+          const updatedCards = await getCards();
+          setCards(updatedCards);
 
           // Check if the import included additional data
-          const parsedData = JSON.parse(jsonData);
-          const hasAPIKeys = parsedData.apiKeys && (parsedData.apiKeys.geminiApiKey || parsedData.apiKeys.firebaseApiKey || parsedData.apiKeys.mistralApiKey);
+          const hasAPIKeys = parsedData.apiKeys || parsedData.geminiApiKey || parsedData.firebaseApiKey || parsedData.mistralApiKey;
           const hasLessons = parsedData.grammarLessons && parsedData.grammarLessons.length > 0;
           
           let description = `Successfully imported ${importedCount} cards`;
@@ -120,16 +134,21 @@ export default function MyCards() {
             description: description
           });
         } catch (error) {
+          console.error("Import failed:", error);
+          const isFormatError = error instanceof SyntaxError || (error instanceof Error && error.message?.includes("Invalid JSON"));
+          
           toast({
             variant: "destructive",
             title: "❌ Import failed",
-            description: "The file format is invalid"
+            description: isFormatError
+              ? "The file format is invalid. Please export from Flash Lingo and try again."
+              : (error instanceof Error ? error.message : "Something went wrong while importing.")
           });
         } finally {
           setIsImporting(false);
           // Reset file input
-          if (event.target) {
-            event.target.value = '';
+          if (inputElement) {
+            inputElement.value = '';
           }
         }
       };

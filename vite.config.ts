@@ -8,13 +8,14 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export default defineConfig({
-  base: '/Flash-Lingo-V2/',
+export default defineConfig(async ({ mode }) => ({
+  // Use /Flash-Lingo-V2/ for production (GitHub Pages), / for development
+  base: mode === 'production' ? '/Flash-Lingo-V2/' : '/',
   plugins: [
     react(),
     runtimeErrorOverlay(),
     themePlugin(),
-    ...(process.env.NODE_ENV !== "production" &&
+    ...(mode !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
@@ -39,4 +40,4 @@ export default defineConfig({
       }
     }
   },
-});
+}));
