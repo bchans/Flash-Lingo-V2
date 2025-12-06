@@ -459,6 +459,16 @@ Generate exactly 5 complete scenarios.`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Gemini API error response (scenario generation):', errorText);
+      
+      // Handle specific error codes
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Invalid or expired Gemini API key (401/403). Please check your API key.');
+      } else if (response.status === 429) {
+        throw new Error('API rate limit exceeded (429). Please wait 1-2 minutes and try again.');
+      } else if (response.status >= 500) {
+        throw new Error('Gemini AI service is temporarily unavailable (500+). Try again later.');
+      }
+      
       throw new Error(`Gemini API error (scenario): ${response.status} - ${errorText}`);
     }
 
@@ -902,6 +912,28 @@ Create 3-5 exercises that progressively build the concept. Each exercise should 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Gemini API error:', response.status, errorText);
+      
+      // Handle specific error codes with user-friendly messages
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Invalid or expired Gemini API key (401/403). Please check your API key in Settings.');
+      } else if (response.status === 429) {
+        throw new Error('API rate limit exceeded (429). Please wait 1-2 minutes and try again.');
+      } else if (response.status === 400) {
+        // Try to get more details from error
+        try {
+          const errorObj = JSON.parse(errorText);
+          const errorMsg = errorObj.error?.message || errorText;
+          if (errorMsg.includes('API_KEY')) {
+            throw new Error('Invalid API key format. Please check your Gemini API key.');
+          }
+          throw new Error(`Bad request (400): ${errorMsg}`);
+        } catch {
+          throw new Error(`Bad request (400): ${errorText}`);
+        }
+      } else if (response.status >= 500) {
+        throw new Error('Gemini AI service is temporarily unavailable (500+). Please try again later.');
+      }
+      
       throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
     }
 
@@ -912,12 +944,16 @@ Create 3-5 exercises that progressively build the concept. Each exercise should 
     // Check for errors or blocked content
     if (result.promptFeedback?.blockReason) {
       console.error('Gemini blocked the request:', result.promptFeedback);
-      throw new Error(`Content was blocked: ${result.promptFeedback.blockReason}`);
+      throw new Error(`Content was blocked by safety filters: ${result.promptFeedback.blockReason}`);
     }
 
     if (!result.candidates || result.candidates.length === 0) {
       console.error('No candidates in Gemini response:', result);
-      throw new Error('Gemini API returned no candidates. The request may have been filtered.');
+      // Check if there's an error in the response
+      if (result.error) {
+        throw new Error(`Gemini error: ${result.error.message || JSON.stringify(result.error)}`);
+      }
+      throw new Error('Gemini API returned no response. The request may have been filtered or quota exceeded.');
     }
 
     const candidate = result.candidates[0];

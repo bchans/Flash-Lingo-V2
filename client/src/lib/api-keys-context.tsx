@@ -64,7 +64,23 @@ export function APIKeysProvider({ children }: { children: React.ReactNode }) {
         if (file) {
           try {
             const text = await file.text();
-            importAPIKeys(text);
+            const data = JSON.parse(text);
+            
+            // Check if this is a full FlashLingo export (has cards array and apiKeys object)
+            if (data.cards && Array.isArray(data.cards) && data.apiKeys) {
+              console.log('📦 Detected FlashLingo export file, extracting API keys...');
+              // Extract just the API keys from the full export
+              saveAPIKeys(data.apiKeys);
+            } else if (data.geminiApiKey !== undefined || data.mistralApiKey !== undefined || data.firebaseApiKey !== undefined) {
+              // This is a standalone API keys file
+              console.log('🔑 Detected standalone API keys file');
+              saveAPIKeys(data);
+            } else {
+              // Try importing as-is (backward compatibility)
+              console.log('📄 Attempting standard import');
+              importAPIKeys(text);
+            }
+            
             refreshKeys();
             resolve(true);
           } catch (error) {

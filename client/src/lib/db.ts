@@ -166,6 +166,17 @@ export async function importCards(jsonData: string): Promise<number> {
     grammarLessons = data.grammarLessons;
   }
 
+  // Import API keys if present in the export
+  if (data.apiKeys && typeof data.apiKeys === 'object') {
+    const { saveAPIKeys } = await import('./api-keys');
+    // Only save if there are actual keys (not all empty)
+    const hasKeys = data.apiKeys.geminiApiKey || data.apiKeys.mistralApiKey || data.apiKeys.firebaseApiKey || data.apiKeys.firebaseConfig;
+    if (hasKeys) {
+      saveAPIKeys(data.apiKeys);
+      console.log('✅ API keys restored from export');
+    }
+  }
+
   let importedCount = 0;
 
   // Import cards (including their scenarios)

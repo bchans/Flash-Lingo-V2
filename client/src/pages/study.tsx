@@ -827,20 +827,50 @@ export default function Study() {
     } catch (error) {
       console.error("Error generating grammar lesson:", error);
       
-      // Set a more specific error message
+      // Set a more specific error message based on error type
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      if (errorMessage.includes('JSON') || errorMessage.includes('parse')) {
-        setGrammarLessonError('The AI response was incomplete. This often happens due to high demand.');
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-        setGrammarLessonError('Network connection issue. Please check your internet.');
+      let userFriendlyError = '';
+      let toastTitle = '❌ Lesson Generation Failed';
+      let toastDescription = '';
+      
+      if (errorMessage.toLowerCase().includes('api key') || errorMessage.includes('401') || errorMessage.includes('403')) {
+        userFriendlyError = 'API key is missing, invalid, or expired. Please check your API keys.';
+        toastTitle = '🔑 API Key Issue';
+        toastDescription = 'Your Gemini API key may be invalid or expired. Try re-importing your keys.';
+        refreshKeys(); // Refresh to update button state
+      } else if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit') || errorMessage.toLowerCase().includes('quota')) {
+        userFriendlyError = 'API rate limit exceeded. Please wait a few minutes before trying again.';
+        toastTitle = '⏳ Rate Limit Reached';
+        toastDescription = 'Too many requests. Wait 1-2 minutes and try again.';
+      } else if (errorMessage.includes('500') || errorMessage.includes('503') || errorMessage.toLowerCase().includes('unavailable')) {
+        userFriendlyError = 'The AI service is temporarily unavailable. Please try again later.';
+        toastTitle = '🔧 Service Unavailable';
+        toastDescription = 'Gemini AI is experiencing issues. Try again in a few minutes.';
+      } else if (errorMessage.toLowerCase().includes('json') || errorMessage.toLowerCase().includes('parse') || errorMessage.toLowerCase().includes('truncated')) {
+        userFriendlyError = 'The AI response was incomplete. This sometimes happens with complex lessons.';
+        toastTitle = '📄 Incomplete Response';
+        toastDescription = 'The AI response was cut off. Try again.';
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch') || errorMessage.toLowerCase().includes('failed to fetch')) {
+        userFriendlyError = 'Network connection issue. Please check your internet connection.';
+        toastTitle = '🌐 Network Error';
+        toastDescription = 'Could not connect to the AI service. Check your internet.';
+      } else if (errorMessage.toLowerCase().includes('timeout')) {
+        userFriendlyError = 'Request timed out. The AI took too long to respond.';
+        toastTitle = '⏱️ Timeout';
+        toastDescription = 'Request took too long. Try again.';
       } else {
-        setGrammarLessonError('Failed to generate lesson. The AI service might be overloaded.');
+        userFriendlyError = `Failed to generate lesson: ${errorMessage}`;
+        toastTitle = '❌ Generation Failed';
+        toastDescription = errorMessage.length > 100 ? errorMessage.substring(0, 100) + '...' : errorMessage;
       }
+      
+      setGrammarLessonError(userFriendlyError);
       
       toast({
         variant: "destructive",
-        title: "❌ Grammar Lesson Generation Failed",
-        description: "Click the retry button to try again.",
+        title: toastTitle,
+        description: toastDescription,
+        duration: 6000, // Show for 6 seconds so user can read it
       });
     } finally {
       setIsLoadingGrammarLesson(false);
@@ -2769,6 +2799,25 @@ export default function Study() {
                     {/* Tech Tree Layout */}
                     <div className="training-mode-container max-w-4xl mx-auto">
                       <div className="tech-tree-layout relative">
+                        {/* Error Message Box - shown when there's an error */}
+                        {grammarLessonError && !isLoadingGrammarLesson && (
+                          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl animate-in fade-in-0 slide-in-from-top-2 duration-300">
+                            <div className="flex items-start gap-3">
+                              <div className="text-2xl">⚠️</div>
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-red-700 mb-1">Lesson Generation Failed</h4>
+                                <p className="text-sm text-red-600">{grammarLessonError}</p>
+                              </div>
+                              <button 
+                                onClick={() => setGrammarLessonError(null)}
+                                className="text-red-400 hover:text-red-600 text-lg"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {/* New Lesson at top */}
                         <div className="flex justify-center mb-8">
                           <div 
@@ -2778,6 +2827,9 @@ export default function Study() {
                             style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
                             onClick={async () => {
                               if (isLoadingGrammarLesson) return;
+                              
+                              // Clear any previous error
+                              setGrammarLessonError(null);
                               
                               // Check for API key first
                               if (!hasGeminiKey) {
@@ -2795,7 +2847,7 @@ export default function Study() {
                               generateNewGrammarLesson();
                             }}
                           >
-                            <div className={`${!hasGeminiKey ? 'bg-amber-50 hover:bg-amber-100 border-amber-300' : 'bg-blue-100 hover:bg-blue-200 border-blue-300'} transition-colors p-6 rounded-xl border-2 shadow-lg relative ${
+                            <div className={`${!hasGeminiKey ? 'bg-amber-50 hover:bg-amber-100 border-amber-300' : grammarLessonError ? 'bg-red-50 hover:bg-red-100 border-red-300' : 'bg-blue-100 hover:bg-blue-200 border-blue-300'} transition-colors p-6 rounded-xl border-2 shadow-lg relative ${
                               isLoadingGrammarLesson ? 'animate-pulse' : ''
                             }`}>
                               {!hasGeminiKey ? (
@@ -2809,6 +2861,12 @@ export default function Study() {
                                   <div className="text-4xl mb-3 animate-spin">⏳</div>
                                   <h3 className="font-semibold text-gray-800">Creating...</h3>
                                   <p className="text-xs text-gray-600 mt-1">Please wait</p>
+                                </>
+                              ) : grammarLessonError ? (
+                                <>
+                                  <div className="text-4xl mb-3">🔄</div>
+                                  <h3 className="font-semibold text-red-700">Try Again</h3>
+                                  <p className="text-xs text-red-600 mt-1">Click to retry</p>
                                 </>
                               ) : (
                                 <>
