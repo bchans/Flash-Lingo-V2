@@ -10,6 +10,7 @@ import { OfflineIndicator } from "@/components/ui/offline-indicator";
 import { LanguageOnboarding } from "@/components/ui/language-onboarding";
 import { usePreferences } from "@/lib/preferences-simple";
 import { AchievementProvider } from "@/lib/achievement-context";
+import { APIKeysProvider } from "@/lib/api-keys-context";
 import { AchievementNotification } from "@/components/ui/achievement-notification";
 import { InstallPrompt } from "@/components/ui/install-prompt";
 import { getLanguageLabel } from "@/lib/constants";
@@ -104,12 +105,14 @@ function App() {
   console.log('🎯 APP: Languages:', languages);
   
   return (
-    <AchievementProvider>
-      <div className="min-h-screen bg-background">
-        {console.log('🎯 APP: Rendering Switch component')}
-        {AppContent}
-      </div>
-    </AchievementProvider>
+    <APIKeysProvider>
+      <AchievementProvider>
+        <div className="min-h-screen bg-background">
+          {console.log('🎯 APP: Rendering Switch component')}
+          {AppContent}
+        </div>
+      </AchievementProvider>
+    </APIKeysProvider>
   );
 }
 

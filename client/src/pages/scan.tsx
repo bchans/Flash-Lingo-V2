@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Camera, Upload, Loader2, Check, X, ArrowLeftRight, Settings, FileText, Type, Zap, Hash, MessageSquare, Home, Dumbbell } from "lucide-react";
+import { ArrowLeft, Camera, Upload as UploadIcon, Loader2, Check, X, ArrowLeftRight, Settings, FileText, Type, Zap, Hash, MessageSquare, Home, Dumbbell } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { usePreferences } from "@/lib/preferences-simple";
@@ -12,6 +12,8 @@ import { extractCardsFromImageWithGemini } from "@/lib/gemini";
 import { getCards } from "@/lib/db";
 import { ScanPreviewCard } from "@/components/ui/scan-preview-card";
 import { LANGUAGES } from "@/lib/constants";
+import { useAPIKeys } from "@/lib/api-keys-context";
+import { ImportAPIKeysPrompt } from "@/components/ui/import-api-keys-prompt";
 
 const getLanguageFlag = (langCode: string): string => {
   const flags: Record<string, string> = {
@@ -50,6 +52,7 @@ export default function Scan() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { languages, useEmojiMode } = usePreferences();
+  const { hasGeminiKey, importKeysFromFile, refreshKeys } = useAPIKeys();
 
   // Initialize scan languages from user preferences
   React.useEffect(() => {
@@ -73,6 +76,16 @@ export default function Scan() {
   };
 
   const handleProcessImage = async () => {
+    // Check for API key first
+    if (!hasGeminiKey) {
+      toast({
+        variant: "destructive",
+        title: "🔑 API Key Required",
+        description: "Please import your API keys to use the scan feature. Click the 'Import API Keys' button.",
+      });
+      return;
+    }
+
     if (!image || !scanSourceLang || !scanTargetLang) {
       toast({
         variant: "destructive",
@@ -110,11 +123,29 @@ export default function Scan() {
 
     } catch (error) {
       console.error('Processing error:', error);
-      toast({
-        variant: "destructive",
-        title: "Processing Failed",
-        description: error instanceof Error ? error.message : "Failed to process image"
-      });
+      const errorMessage = error instanceof Error ? error.message : "Failed to process image";
+      
+      // Check if it's an API key issue
+      if (errorMessage.toLowerCase().includes('api key') || errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('401')) {
+        toast({
+          variant: "destructive",
+          title: "🔑 API Key Issue",
+          description: "Your Gemini API key may be invalid or expired. Please check your API keys in Settings.",
+        });
+        refreshKeys(); // Refresh to update button state
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        toast({
+          variant: "destructive",
+          title: "🌐 Network Error",
+          description: "Could not connect to the AI service. Please check your internet connection.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Processing Failed",
+          description: errorMessage
+        });
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -205,21 +236,42 @@ export default function Scan() {
                   </div>
                   
                   <div className="flex gap-3">
-                    <Button 
-                      onClick={handleProcessImage}
-                      disabled={isProcessing}
-                      className="flex-1 h-12"
-                      size="lg"
-                    >
-                      {isProcessing ? (
-                        <div className="flex items-center">
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Analyzing...
-                        </div>
-                      ) : (
-                        "Process Image"
-                      )}
-                    </Button>
+                    {!hasGeminiKey ? (
+                      <Button 
+                        onClick={async () => {
+                          const success = await importKeysFromFile();
+                          if (success) {
+                            toast({
+                              title: "✅ API Keys Imported",
+                              description: "Your API keys have been imported. You can now process images!",
+                            });
+                            refreshKeys();
+                          }
+                        }}
+                        className="flex-1 h-12 border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                        variant="outline"
+                        size="lg"
+                      >
+                        <UploadIcon className="mr-2 h-4 w-4" />
+                        Import API Keys
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={handleProcessImage}
+                        disabled={isProcessing}
+                        className="flex-1 h-12"
+                        size="lg"
+                      >
+                        {isProcessing ? (
+                          <div className="flex items-center">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Analyzing...
+                          </div>
+                        ) : (
+                          "Process Image"
+                        )}
+                      </Button>
+                    )}
                     
                     <Button 
                       onClick={handleReset}

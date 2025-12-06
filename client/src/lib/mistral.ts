@@ -90,7 +90,14 @@ DO NOT include any additional text, explanations, or formatting.`;
     });
 
     if (!response.ok) {
-      throw new Error('Memory aid request failed');
+      if (response.status === 401) {
+        throw new Error('Invalid or expired Mistral API key. Please check your API key in Settings.');
+      } else if (response.status === 429) {
+        throw new Error('API rate limit exceeded. Please wait a moment and try again.');
+      } else if (response.status >= 500) {
+        throw new Error('Mistral AI service is temporarily unavailable. Please try again later.');
+      }
+      throw new Error(`Memory aid request failed (${response.status}). Please try again.`);
     }
 
     const data = await response.json();
@@ -243,7 +250,14 @@ export async function getTranslation({ text, sourceLang, targetLang }: Translati
     });
 
     if (!response.ok) {
-      throw new Error('Translation request failed');
+      if (response.status === 401) {
+        throw new Error('Invalid or expired Mistral API key. Please check your API key in Settings.');
+      } else if (response.status === 429) {
+        throw new Error('API rate limit exceeded. Please wait a moment and try again.');
+      } else if (response.status >= 500) {
+        throw new Error('Mistral AI service is temporarily unavailable. Please try again later.');
+      }
+      throw new Error(`Translation request failed (${response.status}). Please try again.`);
     }
 
     const data = await response.json();

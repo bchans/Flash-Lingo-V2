@@ -34,6 +34,8 @@ import { useAchievement } from "@/lib/achievement-context";
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import type { NewWordInfo, SourceLanguageSentencePart } from "@/components/ui/sentence-builder"; // Import NewWordInfo
 import { generateScenarioWithGemini, GeminiScenarioRequest, GeminiGeneratedScenarioData, generateGrammarLessonWithGemini, GrammarLessonData, getLessonIcon } from "@/lib/gemini"; // Added for Gemini integration
+import { useAPIKeys } from "@/lib/api-keys-context";
+import { Upload } from "lucide-react";
 
 type StudyMode = 'flashcard' | 'multiple-choice' | 'streak' | 'daily' | 'time-attack' | 'driving-game' | 'sentence-builder' | 'grammar-lessons';
 
@@ -406,6 +408,7 @@ export default function Study() {
   const [mistralAPICalls, setMistralAPICalls] = useState(0); 
   const dailyGoal = 5; 
   const { useEmojiMode, toggleEmojiMode } = usePreferences();
+  const { hasGeminiKey, importKeysFromFile, refreshKeys } = useAPIKeys();
   const [location, setLocation] = useLocation();
   const [studyAllCards, setStudyAllCards] = useState(true); // New state for flashcard mode
   const [showTrainingModes, setShowTrainingModes] = useState(false); // New state for training modes dropdown
@@ -733,6 +736,16 @@ export default function Study() {
   }
 
   async function generateNewGrammarLesson() {
+    // Check for API key first
+    if (!hasGeminiKey) {
+      toast({
+        variant: "destructive",
+        title: "🔑 API Key Required",
+        description: "Please import your API keys to generate grammar lessons.",
+      });
+      return;
+    }
+    
     setIsLoadingGrammarLesson(true);
     setGrammarLessonError(null); // Clear any previous errors
     try {
@@ -2585,14 +2598,40 @@ export default function Study() {
                     Sentence Builder
                   </h2>
                   <p className="text-gray-600 mb-8">
-                    Choose Training Mode
+                    {!hasGeminiKey ? 'API Keys Required' : 'Choose Training Mode'}
                   </p>
 
-                  <div className="training-mode-container grid grid-cols-2 gap-6 max-w-sm mx-auto">
+                  {/* Show Import API Keys prompt if no Gemini key */}
+                  {!hasGeminiKey && (
+                    <div className="mb-8 p-6 bg-amber-50 border-2 border-amber-300 rounded-xl">
+                      <div className="text-4xl mb-3">🔑</div>
+                      <h3 className="font-semibold text-amber-700 mb-2">Import API Keys</h3>
+                      <p className="text-sm text-amber-600 mb-4">Gemini API key is required for Sentence Builder</p>
+                      <Button
+                        onClick={async () => {
+                          const success = await importKeysFromFile();
+                          if (success) {
+                            toast({
+                              title: "✅ API Keys Imported",
+                              description: "Your API keys have been imported. You can now use Sentence Builder!",
+                            });
+                            refreshKeys();
+                          }
+                        }}
+                        className="bg-amber-500 hover:bg-amber-600 text-white"
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Import API Keys
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className={`training-mode-container grid grid-cols-2 gap-6 max-w-sm mx-auto ${!hasGeminiKey ? 'opacity-50 pointer-events-none' : ''}`}>
                     <div
                       className="training-option flex flex-col items-center text-center cursor-pointer hover:scale-105 transition-all transform animate-in slide-in-from-bottom-4 fade-in-0 duration-300"
                       style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
                       onClick={() => {
+                        if (!hasGeminiKey) return;
                         const container = document.querySelector('.training-mode-container');
                         const categoriesSection = document.querySelector('.categories-section');
                         if (container) {
@@ -2737,15 +2776,35 @@ export default function Study() {
                               isLoadingGrammarLesson ? 'cursor-wait opacity-75' : 'cursor-pointer hover:scale-105'
                             }`}
                             style={{ animationDelay: '0.1s', animationFillMode: 'both' }}
-                            onClick={() => {
+                            onClick={async () => {
                               if (isLoadingGrammarLesson) return;
+                              
+                              // Check for API key first
+                              if (!hasGeminiKey) {
+                                const success = await importKeysFromFile();
+                                if (success) {
+                                  toast({
+                                    title: "✅ API Keys Imported",
+                                    description: "Your API keys have been imported. Try generating a lesson now!",
+                                  });
+                                  refreshKeys();
+                                }
+                                return;
+                              }
+                              
                               generateNewGrammarLesson();
                             }}
                           >
-                            <div className={`bg-blue-100 hover:bg-blue-200 transition-colors p-6 rounded-xl border-2 border-blue-300 shadow-lg relative ${
+                            <div className={`${!hasGeminiKey ? 'bg-amber-50 hover:bg-amber-100 border-amber-300' : 'bg-blue-100 hover:bg-blue-200 border-blue-300'} transition-colors p-6 rounded-xl border-2 shadow-lg relative ${
                               isLoadingGrammarLesson ? 'animate-pulse' : ''
                             }`}>
-                              {isLoadingGrammarLesson ? (
+                              {!hasGeminiKey ? (
+                                <>
+                                  <div className="text-4xl mb-3">🔑</div>
+                                  <h3 className="font-semibold text-amber-700">Import API Keys</h3>
+                                  <p className="text-xs text-amber-600 mt-1">Required for lessons</p>
+                                </>
+                              ) : isLoadingGrammarLesson ? (
                                 <>
                                   <div className="text-4xl mb-3 animate-spin">⏳</div>
                                   <h3 className="font-semibold text-gray-800">Creating...</h3>
@@ -2911,16 +2970,38 @@ export default function Study() {
                         {grammarLessonError || 'Unable to create a new lesson right now'}
                       </p>
                       <div className="space-y-3">
-                        <Button 
-                          onClick={() => {
-                            generateNewGrammarLesson();
-                          }}
-                          className="bg-blue-500 hover:bg-blue-600 text-white"
-                        >
-                          🔄 Try Again
-                        </Button>
+                        {!hasGeminiKey ? (
+                          <Button 
+                            onClick={async () => {
+                              const success = await importKeysFromFile();
+                              if (success) {
+                                toast({
+                                  title: "✅ API Keys Imported",
+                                  description: "Your API keys have been imported. Try generating a lesson now!",
+                                });
+                                refreshKeys();
+                              }
+                            }}
+                            className="bg-amber-500 hover:bg-amber-600 text-white"
+                          >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Import API Keys
+                          </Button>
+                        ) : (
+                          <Button 
+                            onClick={() => {
+                              generateNewGrammarLesson();
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white"
+                          >
+                            🔄 Try Again
+                          </Button>
+                        )}
                         <div className="text-sm text-gray-500">
-                          If this keeps happening, try again in a few minutes
+                          {!hasGeminiKey 
+                            ? "API keys are required to generate lessons"
+                            : "If this keeps happening, try again in a few minutes"
+                          }
                         </div>
                       </div>
                     </div>

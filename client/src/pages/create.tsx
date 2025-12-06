@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Settings, Save, RefreshCw, Check } from "lucide-react";
+import { Loader2, Settings, Save, RefreshCw, Check, Upload } from "lucide-react";
 
 import { getTranslation, getMemoryAid, getCategoryForCard } from "@/lib/mistral";
 import { saveCard, getCards } from "@/lib/db";
@@ -37,6 +37,8 @@ import { TranslationPreviewCard } from "@/components/ui/translation-preview-card
 import { usePreferences } from "@/lib/preferences-simple";
 import { LANGUAGES } from "@/lib/constants";
 import { useAchievement } from "@/lib/achievement-context";
+import { useAPIKeys } from "@/lib/api-keys-context";
+import { ImportAPIKeysPrompt } from "@/components/ui/import-api-keys-prompt";
 
 export default function Create() {
   const [isTranslating, setIsTranslating] = useState(false);
@@ -52,6 +54,7 @@ export default function Create() {
   const [showSavedState, setShowSavedState] = useState(false);
   const { toast } = useToast();
   const { languages, useEmojiMode, setLanguages } = usePreferences();
+  const { hasMistralKey, importKeysFromFile, refreshKeys } = useAPIKeys();
 
   const form = useForm<TranslationRequest>({
     resolver: zodResolver(translationRequestSchema),
@@ -71,16 +74,44 @@ export default function Create() {
   }, [languages.nativeLang, languages.learningLang, form]);
 
   async function onSubmit(data: TranslationRequest) {
+    // Double-check API key availability
+    if (!hasMistralKey) {
+      toast({
+        variant: "destructive",
+        title: "🔑 API Key Required",
+        description: "Please import your API keys to create cards. Click the 'Import API Keys' button below.",
+      });
+      return;
+    }
+    
     try {
       setIsTranslating(true);
       const result = await getTranslation(data);
       setCurrentTranslation(result);
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "❌ Error",
-        description: (error as Error).message
-      });
+      const errorMessage = (error as Error).message;
+      
+      // Check if it's an API key issue
+      if (errorMessage.toLowerCase().includes('api key') || errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('401')) {
+        toast({
+          variant: "destructive",
+          title: "🔑 API Key Issue",
+          description: "Your API key may be invalid or expired. Please check your API keys in Settings.",
+        });
+        refreshKeys(); // Refresh to update button state
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        toast({
+          variant: "destructive",
+          title: "🌐 Network Error",
+          description: "Could not connect to the translation service. Please check your internet connection.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "❌ Translation Failed",
+          description: errorMessage || "An unexpected error occurred. Please try again.",
+        });
+      }
     } finally {
       setIsTranslating(false);
     }
@@ -340,20 +371,42 @@ export default function Create() {
                         )}
                       />
 
-                      <Button 
-                        type="submit" 
-                        className="w-full h-14 text-lg mt-6"
-                        disabled={isTranslating}
-                      >
-                        {isTranslating ? (
-                          <div className="flex items-center">
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                            Translating...
-                          </div>
-                        ) : (
-                          "Create Card"
-                        )}
-                      </Button>
+                      {!hasMistralKey ? (
+                        <Button 
+                          type="button"
+                          className="w-full h-14 text-lg mt-6 border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                          variant="outline"
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            const success = await importKeysFromFile();
+                            if (success) {
+                              toast({
+                                title: "✅ API Keys Imported",
+                                description: "Your API keys have been imported. You can now create cards!",
+                              });
+                              refreshKeys();
+                            }
+                          }}
+                        >
+                          <Upload className="mr-2 h-5 w-5" />
+                          Import API Keys
+                        </Button>
+                      ) : (
+                        <Button 
+                          type="submit" 
+                          className="w-full h-14 text-lg mt-6"
+                          disabled={isTranslating}
+                        >
+                          {isTranslating ? (
+                            <div className="flex items-center">
+                              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                              Translating...
+                            </div>
+                          ) : (
+                            "Create Card"
+                          )}
+                        </Button>
+                      )}
 
                       {showSettings && (
                         <div className="flex gap-4 mt-8 animate-in slide-in-from-bottom duration-300">

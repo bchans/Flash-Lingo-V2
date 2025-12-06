@@ -244,6 +244,15 @@ Guidelines:
       const errorText = await response.text();
       console.error('Gemini API error response:', errorText);
       
+      // Handle specific error codes
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Invalid or expired Gemini API key. Please check your API key in Settings.');
+      } else if (response.status === 429) {
+        throw new Error('API rate limit exceeded. Please wait a moment and try again.');
+      } else if (response.status >= 500) {
+        throw new Error('Gemini AI service is temporarily unavailable. Please try again later.');
+      }
+      
       // Try to parse the error for more details
       try {
         const errorObj = JSON.parse(errorText);
