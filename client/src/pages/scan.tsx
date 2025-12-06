@@ -220,7 +220,7 @@ export default function Scan() {
                       className="h-16 text-base font-medium"
                       size="lg"
                     >
-                      <Upload className="h-5 w-5 mr-3" />
+                      <UploadIcon className="h-5 w-5 mr-3" />
                       Upload Image
                     </Button>
                   </div>

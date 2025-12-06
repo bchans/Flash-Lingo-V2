@@ -72,30 +72,39 @@ const CAR_SPEED_MULTIPLIERS = [
 const getResponsiveSignConfig = () => {
   const isMobile = window.innerWidth < 768;
   const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+  const isLargeDesktop = window.innerWidth >= 1440;
   
   if (isMobile) {
     return {
-      height: 8, // 8vh for mobile
-      fontSize: 'clamp(12px, 3vh, 24px)', // Much smaller on mobile
-      minWidth: '20vw', // Smaller minimum width, fits content better
-      maxWidth: '45vw', // Never exceed 45% of screen width
-      padding: '1vh 2vw'
+      height: 6, // 6vh for mobile - smaller to fit screen
+      fontSize: 'clamp(10px, 2.5vh, 18px)', // Smaller on mobile
+      minWidth: '18vw', // Smaller minimum width
+      maxWidth: '40vw', // Never exceed 40% of screen width
+      padding: '0.8vh 1.5vw'
     };
   } else if (isTablet) {
     return {
-      height: 10, // 10vh for tablet
-      fontSize: 'clamp(16px, 4vh, 32px)',
-      minWidth: '15vw', // Smaller minimum width, fits content better
-      maxWidth: '45vw', // Never exceed 45% of screen width
-      padding: '1.5vh 2vw'
+      height: 7, // 7vh for tablet
+      fontSize: 'clamp(12px, 2.5vh, 22px)',
+      minWidth: '12vw',
+      maxWidth: '35vw', // Smaller max width
+      padding: '1vh 1.5vw'
+    };
+  } else if (isLargeDesktop) {
+    return {
+      height: 6, // 6vh for large desktop - smaller relative to screen
+      fontSize: 'clamp(14px, 2vh, 24px)', // Much smaller on large screens
+      minWidth: '8vw', // Smaller minimum width
+      maxWidth: '20vw', // Much smaller max width on large screens
+      padding: '1vh 1.5vw'
     };
   } else {
     return {
-      height: 12, // 12vh for desktop
-      fontSize: 'clamp(20px, 5vh, 40px)',
-      minWidth: '15vw', // Smaller minimum width, fits content better
-      maxWidth: '45vw', // Never exceed 45% of screen width
-      padding: '2vh 2vw'
+      height: 7, // 7vh for standard desktop
+      fontSize: 'clamp(14px, 2.5vh, 26px)', // Smaller font
+      minWidth: '10vw', // Smaller minimum width
+      maxWidth: '25vw', // Smaller max width
+      padding: '1vh 1.5vw'
     };
   }
 };

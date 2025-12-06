@@ -168,14 +168,36 @@ export function DrivingGameCard({
     };
   }, []);
 
-  const shouldUseMobileOverlay = isMobile && gameStarted && !isFullscreen;
+  // On mobile, always use overlay when game is active to hide page content
+  const shouldUseMobileOverlay = isMobile && gameStarted;
 
   useEffect(() => {
     if (!shouldUseMobileOverlay || typeof document === 'undefined') return;
+    
+    // Save original styles
     const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalTop = document.body.style.top;
+    const originalWidth = document.body.style.width;
+    const originalHeight = document.body.style.height;
+    
+    // Lock body to prevent any scrolling or content visibility
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = '0';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    
+    // Also hide any scrollbars
+    document.documentElement.style.overflow = 'hidden';
+    
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.top = originalTop;
+      document.body.style.width = originalWidth;
+      document.body.style.height = originalHeight;
+      document.documentElement.style.overflow = '';
     };
   }, [shouldUseMobileOverlay]);
 
@@ -644,11 +666,20 @@ export function DrivingGameCard({
       totalCards: shuffledCards.length,
       currentCardIndex: currentIndex + 1
     });
+    
+    // Mobile overlay class for full screen coverage
+    const mobileOverlayClass = shouldUseMobileOverlay 
+      ? 'fixed inset-0 z-[9999] rounded-none border-0 shadow-none' 
+      : '';
+    const mobileOverlayStyle = shouldUseMobileOverlay 
+      ? { height: '100dvh', width: '100vw', backgroundColor: '#000' } 
+      : undefined;
+    
     return (
       <Card
-        className={`w-full overflow-hidden ${shouldUseMobileOverlay ? 'fixed inset-0 z-50 rounded-none border-0 shadow-none bg-background' : ''}`}
+        className={`w-full overflow-hidden ${mobileOverlayClass}`}
         ref={gameContainerRef}
-        style={shouldUseMobileOverlay ? { height: `${viewportHeight}px`, width: '100vw' } : undefined}
+        style={mobileOverlayStyle}
       >
         <CardContent
           className="p-0 relative"
@@ -667,9 +698,9 @@ export function DrivingGameCard({
               onExit={handleExitGame}
               score={score}
               totalCards={shuffledCards.length}
-            selectedCarIndex={selectedCarIndex}
-            streakSpeedMultiplier={streakSpeedMultiplier}
-            currentStreak={streakCount}
+              selectedCarIndex={selectedCarIndex}
+              streakSpeedMultiplier={streakSpeedMultiplier}
+              currentStreak={streakCount}
             />
           </div>
         </CardContent>
@@ -713,37 +744,47 @@ export function DrivingGameCard({
       isGameOver
     });
     
-    const overlayCardClass = shouldUseMobileOverlay ? 'fixed inset-0 z-50 rounded-none border-0 shadow-none bg-background' : '';
-    const overlayCardStyle = shouldUseMobileOverlay ? { height: `${viewportHeight}px`, width: '100vw' } : undefined;
+    // Mobile overlay class for full screen coverage - hide everything else
+    const mobileOverlayClass = shouldUseMobileOverlay 
+      ? 'fixed inset-0 z-[9999] rounded-none border-0 shadow-none' 
+      : '';
+    const mobileOverlayStyle = shouldUseMobileOverlay 
+      ? { height: '100dvh', width: '100vw', backgroundColor: '#000' } 
+      : undefined;
     const containerHeight = shouldUseMobileOverlay ? '100%' : (isFullscreen ? '100vh' : '400px');
 
     return (
       <Card 
-        className={`w-full overflow-hidden ${isFullscreen ? 'fullscreen-game' : ''} ${overlayCardClass}`} 
+        className={`w-full overflow-hidden ${isFullscreen ? 'fullscreen-game' : ''} ${mobileOverlayClass}`} 
         ref={gameContainerRef}
         tabIndex={0}
-        style={overlayCardStyle}
+        style={mobileOverlayStyle}
       >
         <CardContent className={`p-0 relative ${shouldUseMobileOverlay ? 'h-full' : ''}`}>
-          <div className={`flex flex-col ${shouldUseMobileOverlay ? 'h-full' : ''}`}>
-            <div className={`p-4 bg-accent/30 ${isFullscreen ? 'game-header' : ''}`}>
-              <div className="flex justify-end items-center mb-2">
-                <Badge variant="outline" className="text-sm py-1 px-3">
-                  Score {score}/{shuffledCards.length || cards.length || 1}
-                </Badge>
-              </div>
-              <Progress value={progress} className="h-2 mb-1" />
-            </div>
-            
-            <div className={`p-4 text-center ${isFullscreen ? 'game-info' : ''}`}>
-              <h3 className="text-2xl font-bold mb-4">{currentCard.sourceText}</h3>
-              <p className="text-muted-foreground mb-4">
-                Choose the correct translation by driving to the right lane
-              </p>
-            </div>
+          <div className={`flex flex-col ${shouldUseMobileOverlay ? 'h-full' : ''}`} style={shouldUseMobileOverlay ? { backgroundColor: '#000' } : undefined}>
+            {/* Hide header on mobile overlay for cleaner fullscreen */}
+            {!shouldUseMobileOverlay && (
+              <>
+                <div className={`p-4 bg-accent/30 ${isFullscreen ? 'game-header' : ''}`}>
+                  <div className="flex justify-end items-center mb-2">
+                    <Badge variant="outline" className="text-sm py-1 px-3">
+                      Score {score}/{shuffledCards.length || cards.length || 1}
+                    </Badge>
+                  </div>
+                  <Progress value={progress} className="h-2 mb-1" />
+                </div>
+                
+                <div className={`p-4 text-center ${isFullscreen ? 'game-info' : ''}`}>
+                  <h3 className="text-2xl font-bold mb-4">{currentCard.sourceText}</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Choose the correct translation by driving to the right lane
+                  </p>
+                </div>
+              </>
+            )}
 
             {/* 3D Driving Game Scene */}
-            <div className="flex-1 min-h-[260px]">
+            <div className="flex-1 min-h-[260px]" style={shouldUseMobileOverlay ? { height: '100%' } : undefined}>
               <div 
                 className="driving-game-scene-container h-full" 
                 style={{ 
@@ -773,12 +814,12 @@ export function DrivingGameCard({
                   score={score}
                   totalCards={shuffledCards.length}
                   selectedCarIndex={selectedCarIndex}
+                  streakSpeedMultiplier={streakSpeedMultiplier}
+                  currentStreak={streakCount}
                 />
                 
-
-                
                 {/* Touch control areas for mobile */}
-                {isFullscreen && (
+                {(isFullscreen || shouldUseMobileOverlay) && (
                   <>
                     <div 
                       className="touch-control-left" 

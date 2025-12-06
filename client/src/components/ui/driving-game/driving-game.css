@@ -7,6 +7,7 @@
   bottom: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
+  height: 100dvh !important; /* Dynamic viewport height for mobile */
   z-index: 9999 !important;
   background-color: black !important;
   overflow: hidden !important;
@@ -15,6 +16,21 @@
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
+}
+
+/* Mobile overlay for non-fullscreen game mode */
+.driving-game-mobile-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  z-index: 9998 !important;
+  background-color: black !important;
+  overflow: hidden !important;
 }
 
 /* Make the game container take full height when in fullscreen */
@@ -90,16 +106,26 @@
   right: 0;
 }
 
-/* Media queries for mobile orientation - Force landscape in fullscreen */
+/* Media queries for mobile orientation - Use native orientation instead of rotation */
 @media screen and (orientation: portrait) {
   .fullscreen-game {
-    /* Force landscape orientation by rotating the entire game */
-    transform: rotate(90deg);
-    transform-origin: center center;
-    width: 100vh !important;
-    height: 100vw !important;
-    left: calc((100vw - 100vh) / 2) !important;
-    top: calc((100vh - 100vw) / 2) !important;
+    /* Don't rotate - let the user play in portrait if they prefer, or let browser handle it */
+    /* The game UI will adapt to the available space */
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+  }
+  
+  /* Encourage landscape but don't force rotation which causes clipping issues */
+  .fullscreen-game::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: black;
+    z-index: -1;
   }
 }
 
