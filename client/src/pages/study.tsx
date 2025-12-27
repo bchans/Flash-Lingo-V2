@@ -31,6 +31,7 @@ import SentenceBuilder from "@/components/ui/sentence-builder";
 import { GrammarLesson } from "@/components/ui/grammar-lesson";
 import { usePreferences } from "@/lib/preferences-simple";
 import { useAchievement } from "@/lib/achievement-context";
+import { checkForNewAchievements } from "@/lib/achievements";
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import type { NewWordInfo, SourceLanguageSentencePart } from "@/components/ui/sentence-builder"; // Import NewWordInfo
 import { generateScenarioWithGemini, GeminiScenarioRequest, GeminiGeneratedScenarioData, generateGrammarLessonWithGemini, GrammarLessonData, getLessonIcon } from "@/lib/gemini"; // Added for Gemini integration
@@ -407,7 +408,7 @@ export default function Study() {
   const [successProgress, setSuccessProgress] = useState(0);
   const [mistralAPICalls, setMistralAPICalls] = useState(0); 
   const dailyGoal = 5; 
-  const { useEmojiMode, toggleEmojiMode } = usePreferences();
+  const { useEmojiMode, toggleEmojiMode, studyModeItems, updateStudyModeOrder } = usePreferences();
   const { hasGeminiKey, importKeysFromFile, refreshKeys } = useAPIKeys();
   const [location, setLocation] = useLocation();
   const [studyAllCards, setStudyAllCards] = useState(true); // New state for flashcard mode
@@ -982,10 +983,32 @@ export default function Study() {
     }, 1200); // 1.2s total (0.7s animation + 0.5s delay)
   }
 
-  // Handle drag end for study mode items (placeholder for now)
+  // Handle drag end for study mode items
   const handleDragEnd = (result: DropResult) => {
-    // We don't need to reorder these items currently, but the drag functionality is available
-    console.log('Study mode drag ended:', result);
+    // dropped outside the list or no destination
+    if (!result.destination) {
+      return;
+    }
+
+    const sourceIndex = result.source.index;
+    const destIndex = result.destination.index;
+
+    // Don't update if dragged to same position
+    if (sourceIndex === destIndex) {
+      return;
+    }
+
+    // Create a copy of the current study mode items
+    const newOrder = Array.from(studyModeItems);
+
+    // Remove the item from the original position
+    const [movedItem] = newOrder.splice(sourceIndex, 1);
+
+    // Insert it into the new position
+    newOrder.splice(destIndex, 0, movedItem);
+
+    // Update the state and persist
+    updateStudyModeOrder(newOrder);
   };
 
   const toggleStyle = () => {
@@ -1202,6 +1225,16 @@ export default function Study() {
     </div>
   );
 
+  // Style lookup maps for dynamic rendering
+  const studyModeStyles: Record<string, { minimal: React.ReactNode; decorated: React.ReactNode }> = {
+    'flashcard': { minimal: minimalFlashcardStyle, decorated: decoratedFlashcardStyle },
+    'driving-game': { minimal: minimalDrivingGameStyle, decorated: decoratedDrivingGameStyle },
+    'multiple-choice': { minimal: minimalMultipleChoiceStyle, decorated: decoratedMultipleChoiceStyle },
+    'daily': { minimal: minimalDailyStyle, decorated: decoratedDailyStyle },
+    'time-attack': { minimal: minimalTimeAttackStyle, decorated: decoratedTimeAttackStyle },
+    'sentence-builder': { minimal: minimalSentenceBuilderStyle, decorated: decoratedSentenceBuilderStyle },
+    'grammar-lessons': { minimal: minimalGrammarLessonsStyle, decorated: decoratedGrammarLessonsStyle },
+  };
 
   useEffect(() => {
     loadCards();
@@ -1426,20 +1459,8 @@ export default function Study() {
         localStorage.setItem('todayProgress', Math.min(todayProgress + 1, dailyGoal).toString());
         setCompletedCardIds([...completedCardIds, cardId]); // Add completed card ID
 
-        //Check for first success achievement
-        const checkFirstSuccess = async () => {
-          const allCards = await getCards();
-          const learnedCards = allCards.filter(card => card.learned);
-          if (learnedCards.length === 1) {
-            const achievement = {
-              id: "first-learned",
-              name: "First Success",
-              description: "Master your first card"
-            };
-            showAchievement(achievement);
-          }
-        };
-        checkFirstSuccess();
+        // Check for achievements after each successful card
+        checkAchievements();
       }
       
       // Move to next card
@@ -1561,31 +1582,16 @@ export default function Study() {
     }
   }
 
-  function handleDailySessionComplete() {
+  async function handleDailySessionComplete() {
     const sessionsCompleted = parseInt(localStorage.getItem('dailySessionsCompleted') || '0') + 1;
     localStorage.setItem('dailySessionsCompleted', sessionsCompleted.toString());
 
-    // Show achievement notification if this is the 5th daily session
-    if (sessionsCompleted === 5) {
-      showAchievement({
-        id: "daily-dedication",
-        name: "Daily Dedication",
-        description: "Complete 5 daily practice sessions"
-      });
-    }
+    // Check all achievements using centralized system
+    await checkAchievements();
 
     // Track today's progress
     const todayProgress = parseInt(localStorage.getItem('todayProgress') || '0');
-    const dailyGoal = 5; // Same as defined above
-
-    // If daily goal reached, show achievement
-    if (todayProgress >= dailyGoal) {
-      showAchievement({
-        id: "daily-goal-1",
-        name: "Daily Target",
-        description: "Reach your daily study goal"
-      });
-    }
+    const dailyGoalValue = 5; // Same as defined above
 
     setSuccessMessage({
       title: "Daily Practice Complete!",
@@ -1593,48 +1599,58 @@ export default function Study() {
       emoji: "⭐"
     });
     setShowSuccessScreen(true);
+    // Wait for progress bar animation (700ms) + buffer
     setTimeout(() => {
       handleBackToModes();
-    }, 3000);
+    }, 1200);
   }
 
-  function handleMultipleChoiceComplete() {
+  async function handleMultipleChoiceComplete() {
+    await checkAchievements();
     setSuccessMessage({
       title: "Multiple Choice Complete!",
       message: "Great job completing the multiple choice challenge! Your language skills are improving!",
       emoji: "🎯"
     });
     setShowSuccessScreen(true);
+    // Wait for progress bar animation (700ms) + buffer
     setTimeout(() => {
       handleBackToModes();
-    }, 3000);
+    }, 1200);
   }
   
-  function handleTimeAttackComplete() {
+  async function handleTimeAttackComplete() {
+    await checkAchievements();
     setSuccessMessage({
       title: "Time Attack Complete!",
       message: "Great job on the time attack challenge! Your speed is improving!",
       emoji: "⏱️"
     });
     setShowSuccessScreen(true);
+    // Wait for progress bar animation (700ms) + buffer
     setTimeout(() => {
       handleBackToModes();
-    }, 3000);
+    }, 1200);
   }
 
-  function handleSentenceBuilderComplete() {
+  async function handleSentenceBuilderComplete() {
+    await checkAchievements();
     setSuccessMessage({
       title: "Sentence Builder Complete!",
       message: "Excellent work building sentences! Your grammar skills are improving!",
       emoji: "🔧"
     });
     setShowSuccessScreen(true);
+    // Wait for progress bar animation (700ms) + buffer
     setTimeout(() => {
       handleBackToModes();
-    }, 3000);
+    }, 1200);
   }
   
   async function handleDrivingGameComplete() {
+    // Check achievements (driving game already checks per correct answer, but do final check too)
+    await checkAchievements();
+    
     // Refresh cards from database to show updated learned status
     try {
       const updatedCards = await getCards();
@@ -1649,70 +1665,22 @@ export default function Study() {
       emoji: "🚗"
     });
     setShowSuccessScreen(true);
+    // Wait for progress bar animation (700ms) + buffer
     setTimeout(() => {
       handleBackToModes();
-    }, 3000);
+    }, 1200);
   }
 
     async function checkAchievements() {
-    const allCards = await getCards();
-    const learnedCards = allCards.filter(card => card.learned);
-    const todayProgress = parseInt(localStorage.getItem('todayProgress') || '0');
-    const dailyGoal = 5;
-    const streakRecord = parseInt(localStorage.getItem('streakRecord') || '0');
-    const dailySessionsCompleted = parseInt(localStorage.getItem('dailySessionsCompleted') || '0');
-
-    // First card learned
-    if (learnedCards.length === 1) {
-      showAchievement({ 
-        id: "first-learned", 
-        name: "First Success", 
-        description: "Master your first card" 
-      });
-    }
-
-    // Five cards learned
-    if (learnedCards.length >= 5) {
-      showAchievement({ 
-        id: "five-learned", 
-        name: "Five Learned", 
-        description: "Master five cards" 
-      });
-    }
-
-    // Daily goal achievement
-    if (todayProgress >= dailyGoal) {
+    // Use centralized achievement checking that tracks already-shown achievements
+    const newAchievements = await checkForNewAchievements();
+    
+    // Show notifications for each newly unlocked achievement
+    for (const achievement of newAchievements) {
       showAchievement({
-        id: "daily-goal-1",
-        name: "Daily Target",
-        description: "Reach your daily study goal"
-      });
-    }
-
-    // Streak achievements
-    if (streakRecord >= 10) {
-      showAchievement({
-        id: "streak-master",
-        name: "Streak Master",
-        description: "Get 10 correct answers in a row in Streak Challenge"
-      });
-    }
-
-    // Daily dedication
-    if (dailySessionsCompleted >= 5) {
-      showAchievement({
-        id: "daily-dedication",
-        name: "Daily Dedication",
-        description: "Complete 5 daily practice sessions"
-      });
-    }
-
-    // Perfect set achievement
-    if (allCards.length > 0 && learnedCards.length === allCards.length) {
-      showAchievement({
-        id: "complete-deck",
-        name: "Complete Collection",
-        description: "Master all your cards"
+        id: achievement.id,
+        name: achievement.name,
+        description: achievement.description
       });
     }
   }
@@ -1794,7 +1762,7 @@ export default function Study() {
   if (!selectedMode) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center mb-6">
+        <div className="flex items-center mb-6 max-w-3xl mx-auto">
           <Link href="/">
             <Button variant="ghost" size="icon" className="mr-4">
               <ArrowLeft className="h-5 w-5" />
@@ -1811,168 +1779,35 @@ export default function Study() {
                 ref={provided.innerRef}
                 className="grid gap-6 md:grid-cols-2 max-w-3xl mx-auto"
               >
-                <Draggable key="flashcard" draggableId="flashcard" index={0}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('flashcard')} 
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalFlashcardStyle : decoratedFlashcardStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Review cards one by one with traditional flashcard method
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-
-                <Draggable key="driving-game" draggableId="driving-game" index={1}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('driving-game')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalDrivingGameStyle : decoratedDrivingGameStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Drive to the correct translations on the city roads!
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-
-                <Draggable key="multiple-choice" draggableId="multiple-choice" index={2}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('multiple-choice')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalMultipleChoiceStyle : decoratedMultipleChoiceStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Test your knowledge with multiple choice questions
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-
-
-
-                <Draggable key="daily" draggableId="daily" index={4}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('daily')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalDailyStyle : decoratedDailyStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          A curated set of cards for your daily learning routine
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-                
-                <Draggable key="time-attack" draggableId="time-attack" index={5}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('time-attack')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalTimeAttackStyle : decoratedTimeAttackStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Answer as many cards as you can in 60 seconds!
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-
-                <Draggable key="sentence-builder" draggableId="sentence-builder" index={6}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI 
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('sentence-builder')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalSentenceBuilderStyle : decoratedSentenceBuilderStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Build sentences by arranging words in the correct order
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
-
-                <Draggable key="grammar-lessons" draggableId="grammar-lessons" index={7}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
-                    >
-                      <CardUI
-                        className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
-                        onClick={() => handleSelectMode('grammar-lessons')}
-                      >
-                        <CardHeader className="pb-0">
-                          {!useEmojiMode ? minimalGrammarLessonsStyle : decoratedGrammarLessonsStyle}
-                        </CardHeader>
-                        <CardContent className="text-muted-foreground pt-2">
-                          Learn grammar with AI-generated lessons and stories
-                        </CardContent>
-                      </CardUI>
-                    </div>
-                  )}
-                </Draggable>
+                {studyModeItems.map((item, index) => {
+                  const styles = studyModeStyles[item.id];
+                  if (!styles) return null;
+                  
+                  return (
+                    <Draggable key={item.id} draggableId={item.id} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className={`${snapshot.isDragging ? 'opacity-75' : ''}`}
+                        >
+                          <CardUI 
+                            className={`cursor-pointer hover:bg-accent/50 transition-colors ${snapshot.isDragging ? 'border-primary' : ''} cursor-grab active:cursor-grabbing`}
+                            onClick={() => handleSelectMode(item.id as StudyMode)} 
+                          >
+                            <CardHeader className="pb-0">
+                              {!useEmojiMode ? styles.minimal : styles.decorated}
+                            </CardHeader>
+                            <CardContent className="text-muted-foreground pt-2">
+                              {item.description}
+                            </CardContent>
+                          </CardUI>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
                 {provided.placeholder}
               </div>
             )}
@@ -1984,7 +1819,7 @@ export default function Study() {
 
   return (
     <div className="container mx-auto px-4 py-8 overflow-hidden">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 max-w-2xl mx-auto">
         <div className="flex items-center">
           <Button 
             variant="ghost" 

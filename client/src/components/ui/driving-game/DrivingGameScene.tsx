@@ -32,6 +32,8 @@ interface DrivingGameSceneProps {
   selectedCarIndex?: number;
   streakSpeedMultiplier?: number;
   currentStreak?: number;
+  isSoundEnabled?: boolean;
+  onToggleSound?: () => void;
 }
 
 interface OverheadSign {
@@ -55,7 +57,7 @@ const ANIMATION_DURATION = 500;
 const BASE_FORWARD_SPEED = 0.15; // Base speed for city cab (car.glb)
 const BOOST_SPEED = 0.35; // Faster speed when boost is active
 const BOOST_DURATION = 2000; // Boost lasts for 2 seconds
-const STREAK_SPEED_INCREMENT = 0.05;
+const STREAK_SPEED_INCREMENT = 0.10; // 10% speed increase per correct answer in streak
 const EXIT_BUTTON_VERTICAL_OFFSET_PX = 20;
 
 // Car speed multipliers based on car index
@@ -157,6 +159,8 @@ export function DrivingGameScene({
   selectedCarIndex = 0,
   streakSpeedMultiplier = 1,
   currentStreak = 0,
+  isSoundEnabled = false,
+  onToggleSound,
 }: DrivingGameSceneProps) {
   const streakSpeedBonusPercent = Math.max(
     0,
@@ -835,6 +839,12 @@ export function DrivingGameScene({
     // Arrow up key is tracked by isArrowUpPressedRef at component level
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // G key to toggle FPS display
+      if (e.key === "g" || e.key === "G") {
+        setShowFps(prev => !prev);
+        return;
+      }
+
       // Special handling for F key to toggle free roam mode
       if (e.key === "f" || e.key === "F") {
         handleFreeRoamToggle(!isFreeRoamMode);
@@ -1785,9 +1795,11 @@ export function DrivingGameScene({
   const animationFrameCounter = useRef(0);
   const lastMoveLogTime = useRef(0);
 
-  // For frame rate limiting
-  const targetFPS = 60;
-  const frameInterval = 1000 / targetFPS;
+  // For frame timing - use delta time for consistent movement
+  const TARGET_FRAME_TIME = 1000 / 60; // 16.67ms for 60fps baseline
+  const fpsHistoryRef = useRef<number[]>([]);
+  const [displayFps, setDisplayFps] = useState(60);
+  const [showFps, setShowFps] = useState(false); // Hidden by default, toggle with G key
 
   function animate(timestamp = 0) {
     const scene = sceneRef.current;
@@ -1796,29 +1808,31 @@ export function DrivingGameScene({
     const car = carRef.current;
     const manager = sceneryManagerRef.current;
 
-    // Frame rate limiter to ensure consistent 60 FPS
-    const now = timestamp || performance.now();
-    const elapsed = now - lastFrameTimeRef.current;
-
-    // Request next frame right away but only process if enough time has passed
+    // Request next frame immediately
     animationFrameRef.current = requestAnimationFrame(animate);
 
-    if (elapsed < frameInterval) {
-      // Skip this frame if not enough time has passed
+    // Calculate actual delta time since last frame
+    const now = timestamp || performance.now();
+    const deltaTime = now - lastFrameTimeRef.current;
+    lastFrameTimeRef.current = now;
+
+    // Skip if deltaTime is unreasonably large (e.g., tab was inactive) or zero
+    if (deltaTime <= 0 || deltaTime > 500) {
       return;
     }
-
-    // Update time for the next frame - but adjust for any excess time
-    lastFrameTimeRef.current = now - (elapsed % frameInterval);
 
     // Increment frame counter
     animationFrameCounter.current++;
 
-    // Log animation state periodically (every 300 frames)
-    if (animationFrameCounter.current % 300 === 0) {
-      console.log(
-        `ANIMATION FRAME: ${animationFrameCounter.current}, isPausedRef=${isPausedRef.current}, isLoading=${isLoadingRef.current}, FPS: ${Math.round(1000 / elapsed)}`,
-      );
+    // Calculate and display FPS (update every 30 frames to avoid expensive state updates)
+    const instantFps = 1000 / deltaTime;
+    fpsHistoryRef.current.push(instantFps);
+    if (fpsHistoryRef.current.length > 30) {
+      fpsHistoryRef.current.shift();
+    }
+    if (animationFrameCounter.current % 30 === 0) {
+      const avgFps = fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length;
+      setDisplayFps(Math.round(avgFps));
     }
 
     if (!scene || !camera || !renderer) {
@@ -1838,30 +1852,10 @@ export function DrivingGameScene({
 
     // Movement and animations only happen when the game is NOT paused
     if (!isGamePaused) {
-      // Log detailed movement state occasionally
-      if (Date.now() - lastMoveLogTime.current > 5000) {
-        // Every 5 seconds
-        lastMoveLogTime.current = Date.now();
-        console.log(
-          `MOVEMENT STATE: Frame=${animationFrameCounter.current}, FORWARD_SPEED=${forwardSpeedRef.current}, isPaused=${isGamePaused}`,
-        );
-        console.log(
-          `ROAD SEGMENTS: Count=${roadSegmentsRef.current.length}, First segment Z=${roadSegmentsRef.current[0]?.position.z.toFixed(2) || "none"}`,
-        );
-        console.log(`MANAGER: Initialized=${!!manager}`);
-      }
-
       // --- GET THE CURRENT SPEED ---
-      // Simply READ the speed from the ref.
-      // The useEffect hook watching isBoostActive is responsible for SETTING this value correctly.
-      const currentSpeed = boostSpeedRef.current; // Just read the value
-
-      // Log boost status occasionally to verify it's working
-      if (isBoostActive && Math.random() < 0.01) {
-        console.log(
-          `BOOST ACTIVE: Speed = ${currentSpeed.toFixed(3)} (${(currentSpeed / forwardSpeedRef.current).toFixed(1)}x normal)`,
-        );
-      }
+      // Multiply by delta time factor to ensure consistent movement regardless of frame rate
+      const deltaTimeFactor = deltaTime / TARGET_FRAME_TIME; // 1.0 at 60fps, scales with actual frame time
+      const currentSpeed = boostSpeedRef.current * deltaTimeFactor;
 
       // --- 1. Update TotalScrolled Distance (Optional: For Manager/Score) ---
       totalDistanceScrolledRef.current += currentSpeed;
@@ -1874,12 +1868,6 @@ export function DrivingGameScene({
         scene.userData.animateClouds();
       }
 
-      // --- 2.6 Log boost status (no automatic timeout) ---
-      if (isBoostActive) {
-        console.log(
-          `BOOST STATUS - Active: ${isBoostActive}, Current Speed: ${boostSpeedRef.current.toFixed(2)}, Elapsed Time: ${Date.now() - boostStartTimeRef.current}ms`,
-        );
-      }
 
       // --- 2.7 Animate Smoke Particles ---
       if (
@@ -1904,10 +1892,10 @@ export function DrivingGameScene({
               return false;
             }
 
-            // Update position based on velocity
-            particle.position.x += particle.userData.velocity.x;
-            particle.position.y += particle.userData.velocity.y;
-            particle.position.z += particle.userData.velocity.z;
+            // Update position based on velocity (using deltaTimeFactor for frame-rate independence)
+            particle.position.x += particle.userData.velocity.x * deltaTimeFactor;
+            particle.position.y += particle.userData.velocity.y * deltaTimeFactor;
+            particle.position.z += particle.userData.velocity.z * deltaTimeFactor;
 
             // Update opacity based on age
             const lifeProgress = age / particle.userData.lifespan;
@@ -1933,10 +1921,6 @@ export function DrivingGameScene({
 
           // Generate particles more consistently for a continuous smoke trail
           if (Math.random() < particleRate) {
-            console.log(
-              `BOOST PARTICLES: Creating smoke effect (Speed=${boostSpeedRef.current.toFixed(2)})`,
-            );
-
             // Position smoke behind the car
             const smokeOrigin = new THREE.Vector3(
               carRef.current.position.x,
@@ -1990,32 +1974,13 @@ export function DrivingGameScene({
 
       // --- 3. Update Positions using INDIVIDUAL REPOSITIONING ---
 
-      // Track road and ground recycling
-      let roadRecycledCount = 0;
-      let groundRecycledCount = 0;
-      let roadElementsRecycledCount = 0;
-      let signRecycledCount = 0;
-      const startRecycleTime = performance.now();
-
-      // Road Segments - Improved with more aggressive recycling and logging
+      // Road Segments
       roadSegmentsRef.current.forEach((segment, i) => {
         segment.position.z += currentSpeed;
 
-        // Log position of first segment occasionally to monitor movement
-        if (i === 0 && Math.random() < 0.002) {
-          console.log(
-            `ROAD TRACKING: First segment at z=${segment.position.z.toFixed(2)}, threshold=${REPOSITION_THRESHOLD_Z}`,
-          );
-        }
-
         // When a segment passes behind the camera + buffer, move it to the far end of the road chain
         if (segment.position.z > REPOSITION_THRESHOLD_Z) {
-          const oldZ = segment.position.z;
           segment.position.z -= ROAD_LOOP_DISTANCE;
-          roadRecycledCount++; // Increment counter
-          console.log(
-            `ROAD LOOP: Segment ${i} recycled from z=${oldZ.toFixed(2)} to z=${segment.position.z.toFixed(2)}`,
-          );
 
           // Ensure the segment is visible again
           if (segment.material instanceof THREE.Material) {
@@ -2026,54 +1991,21 @@ export function DrivingGameScene({
         }
       });
 
-      // Road Elements (Lines, Dashes) - Tied to ROAD loop distance
-      roadElementsRef.current.forEach((element, i) => {
+      // Road Elements (Lines, Dashes)
+      roadElementsRef.current.forEach((element) => {
         element.position.z += currentSpeed;
 
-        // Use a smaller threshold to ensure markings disappear AFTER the road segment
         if (element.position.z > REPOSITION_THRESHOLD_Z) {
-          const oldZ = element.position.z;
           element.position.z -= ROAD_LOOP_DISTANCE;
-          roadElementsRecycledCount++; // Increment counter
-
-          // Only log occasional element recycling to avoid console spam
-          if (Math.random() < 0.05) {
-            console.log(
-              `ROAD ELEMENT LOOP: Element recycled from z=${oldZ.toFixed(2)} to z=${element.position.z.toFixed(2)}`,
-            );
-          }
         }
       });
 
-      // Ground Segments - Improved with more aggressive recycling and better logging
-      groundSegmentsRef.current.forEach((segment, i) => {
+      // Ground Segments
+      groundSegmentsRef.current.forEach((segment) => {
         segment.position.z += currentSpeed;
 
-        // Log position of first segment occasionally to monitor movement
-        if (i === 0 && Math.random() < 0.002) {
-          console.log(
-            `GROUND TRACKING: First segment at z=${segment.position.z.toFixed(2)}, threshold=${REPOSITION_THRESHOLD_Z}`,
-          );
-
-          // Type-safe material checks
-          if (segment.material instanceof THREE.MeshStandardMaterial) {
-            console.log(
-              `GROUND TEXTURE STATUS: Has texture=${!!segment.material.map}, color=${segment.material.color.getHexString()}`,
-            );
-          } else {
-            console.log(
-              `GROUND TEXTURE STATUS: Material exists but not MeshStandardMaterial`,
-            );
-          }
-        }
-
         if (segment.position.z > REPOSITION_THRESHOLD_Z) {
-          const oldZ = segment.position.z;
           segment.position.z -= GROUND_LOOP_DISTANCE;
-          groundRecycledCount++; // Increment counter
-          console.log(
-            `GROUND LOOP: Segment ${i} recycled from z=${oldZ.toFixed(2)} to z=${segment.position.z.toFixed(2)}`,
-          );
 
           // Ensure the segment is visible again with proper material
           if (segment.material instanceof THREE.Material) {
@@ -2084,34 +2016,16 @@ export function DrivingGameScene({
         }
       });
 
-      // Overhead Signs - Improved with better logging
-      overheadSignsRef.current.forEach((signStruct, i) => {
+      // Overhead Signs
+      overheadSignsRef.current.forEach((signStruct) => {
         const signGroup = signStruct.gantryGroup;
         signGroup.position.z += currentSpeed;
 
-        // Log first sign position occasionally
-        if (i === 0 && Math.random() < 0.002) {
-          console.log(
-            `SIGN TRACKING: First sign at z=${signGroup.position.z.toFixed(2)}, threshold=${REPOSITION_THRESHOLD_Z}`,
-          );
-          console.log(
-            `SIGN TRIGGER STATUS: Last triggered sign=${lastTriggeredSignRef.current ? "Yes" : "None"}`,
-          );
-        }
-
         if (signGroup.position.z > REPOSITION_THRESHOLD_Z) {
-          const oldZ = signGroup.position.z;
           signGroup.position.z -= SIGN_LOOP_DISTANCE;
-          signRecycledCount++; // Increment counter
-          console.log(
-            `SIGN LOOP: Sign ${i} recycled from z=${oldZ.toFixed(2)} to z=${signGroup.position.z.toFixed(2)}`,
-          );
 
           // Reset trigger state when a sign loops
           if (lastTriggeredSignRef.current === signGroup) {
-            console.log(
-              `SIGN TRIGGER RESET: Looped sign ${i} was the last triggered sign - resetting trigger state`,
-            );
             lastTriggeredSignRef.current = null;
           }
         }
@@ -2148,128 +2062,46 @@ export function DrivingGameScene({
           }
         });
         if (signToTrigger) {
-          // Find which sign index was triggered for better logging
-          const signIndex = overheadSignsRef.current.findIndex(
-            (sign) => sign.gantryGroup === signToTrigger,
-          );
-
-          // Log sign trigger information without relying on the position
-          console.log(
-            `SIGN TRIGGERED: Sign ${signIndex}, car lane=${currentLane}`,
-          );
-
-          // REBUILT FROM SCRATCH: Boost deactivation when passing a sign
-          // This is the single source of truth for boost deactivation
-
-          // Force check actual current speed to determine if boost is active
-          // This ensures we properly detect boost regardless of state variable
+          // Check if boost is active and deactivate it
           const actuallyBoosting = boostSpeedRef.current > forwardSpeedRef.current * 1.1;
 
-          console.log(
-            `BOOST DETECTION: State variable=${isBoostActive}, Speed=${boostSpeedRef.current.toFixed(2)}, Normal speed=${forwardSpeedRef.current}`,
-          );
-          console.log(
-            `BOOST DETECTION RESULT: Actually boosting=${actuallyBoosting}`,
-          );
-
           if (actuallyBoosting) {
-            console.log(
-              `BOOST SIGN CHECK: Sign ${signIndex} triggered while boost is active`,
-            );
-            console.log(
-              `BOOST DEACTIVATING: Speed before=${boostSpeedRef.current.toFixed(2)}, normal speed=${forwardSpeedRef.current}`,
-            );
-
             // Stop boost mode immediately - update both state and ref
             setIsBoostActive(false);
-
-            // Directly reset speed to normal
             boostSpeedRef.current = forwardSpeedRef.current;
-
-            console.log(
-              `BOOST DEACTIVATED: Speed reset to ${boostSpeedRef.current.toFixed(2)}`,
-            );
-          } else {
-            console.log(`SIGN PASSED: No boost active, continuing normally`);
           }
 
           lastTriggeredSignRef.current = signToTrigger;
 
-          // Execute the appropriate callback based on car lane and prepare feedback
-          // First, determine which lane was selected and whether the selected answer is correct
-
           // Check if car is in the center lane (no choice was made)
           if (currentLane === "center") {
-            console.log(
-              "CENTER LANE: No choice made, passing sign in the center",
-            );
-            // Don't show feedback or trigger callbacks for center lane
             return;
           }
 
           const isLeft = currentLane === "left";
 
-          // CRITICAL FIX: Make sure to use the actual correctTranslation for comparison
-          // This is where the bug is - we need to correctly check if the selected option
-          // matches the correctTranslation value
-          const selectedText = isLeft ? options[0] : options[1];
-          const isCorrect = selectedText === correctTranslation;
-
-          console.log(
-            `CHOICE MADE: Selected ${isLeft ? "LEFT" : "RIGHT"} lane option`,
-          );
-          console.log(
-            `ANSWER CHECK: Selected "${selectedText}", Correct answer: "${correctTranslation}", isCorrect: ${isCorrect}`,
-          );
-
-          // Record the selection for later feedback display
-          const selectedOption = isLeft ? "left" : "right";
-
-          // Note: Boost mode is already handled above when the sign is triggered
-
-          // Schedule feedback to appear AFTER the car passes the sign
-          // Call the lane selection handler first before showing feedback
-          // so the DrivingGameCard can determine correctness
+          // Call the lane selection handler
           if (!isProcessingSelectionRef.current) {
             isProcessingSelectionRef.current = true;
 
             // Call the appropriate selection handler based on car position
             if (carPositionRef.current === "left") {
-              console.log("Calling onSelectLeft handler");
               onSelectLeftRef.current();
             } else {
-              console.log("Calling onSelectRight handler");
               onSelectRightRef.current();
             }
 
-            // Don't slide signs away immediately - let new options appear
-            // The feedback will be handled by DrivingGameCard via the showFeedback prop
+            // Clear selected lane state and reset processing flag
             setTimeout(() => {
-              console.log(`CHOICE MADE: Selected ${selectedOption} lane`);
-
-              // Clear selected lane state but keep signs visible for new options
               setTimeout(() => {
                 setSelectedLane(null);
               }, 300);
 
-              // Reset the processing flag after a delay to prevent immediate re-triggering
               setTimeout(() => {
                 isProcessingSelectionRef.current = false;
-                console.log("Reset processing flag, ready for next selection");
               }, 1000);
-            }, 100); // Very short delay to allow handleGameAction to process
-          } else {
-            console.log("SELECTION SKIPPED: Already processing a selection");
+            }, 100);
           }
-
-          // For debugging only - log which sign was triggered
-          const signPos = overheadSignsRef.current.findIndex(
-            (sign) => sign.gantryGroup === signToTrigger,
-          );
-
-          console.log(
-            `SELECTION HANDLER: Processing sign at position ${signPos}, isCurrentlyProcessing=${isProcessingSelectionRef.current}`,
-          );
         }
 
         // Lane Change Animation
@@ -2295,27 +2127,9 @@ export function DrivingGameScene({
         }
       } // End car logic
 
-      // Log summary of recycled objects if any
-      const totalRecycled =
-        roadRecycledCount +
-        groundRecycledCount +
-        roadElementsRecycledCount +
-        signRecycledCount;
-      if (totalRecycled > 0) {
-        const recycleTime = performance.now() - startRecycleTime;
-        console.log(
-          `RECYCLING SUMMARY: Total objects recycled: ${totalRecycled} (Road: ${roadRecycledCount}, Ground: ${groundRecycledCount}, Elements: ${roadElementsRecycledCount}, Signs: ${signRecycledCount}), took ${recycleTime.toFixed(2)}ms`,
-        );
-      }
     } // End of if(!isGamePaused) block
 
     // --- 5. Render (Always render the scene regardless of paused state) ---
-    // Add performance logging every 60 frames to track object count and FPS
-    if (animationFrameCounter.current % 60 === 0) {
-      console.log(
-        `PERFORMANCE: Active objects: ${scene.children.length}, FPS: ${Math.round(1000 / elapsed)}`,
-      );
-    }
 
     renderer.render(scene, camera);
 
@@ -2334,6 +2148,28 @@ export function DrivingGameScene({
   // The inner containerRef div is where Three.js mounts the canvas
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* FPS Counter - Toggle with G key */}
+      {!isLoading && showFps && (
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            left: "10px",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            color: displayFps >= 50 ? "#00ff00" : displayFps >= 30 ? "#ffff00" : "#ff0000",
+            padding: "4px 8px",
+            borderRadius: "4px",
+            fontFamily: "monospace",
+            fontSize: "14px",
+            fontWeight: "bold",
+            zIndex: 1000,
+            pointerEvents: "none",
+          }}
+        >
+          {displayFps} FPS
+        </div>
+      )}
+
       {/* Boost Mode Logic Component */}
       <BoostMode
         isBoostActive={isBoostActive}
@@ -2358,49 +2194,82 @@ export function DrivingGameScene({
       {/* Game UI at bottom of screen */}
       {!isLoading && !isPaused && (
         <>
-          {/* Score bottom-left */}
+          {/* Bottom-left UI container - aligned with left highway sign (fixed at 20px to match sign's final position) */}
           <div
             style={{
               position: "absolute",
-              bottom: "8vh",
-              left: "3vw",
-              color: "white",
-              zIndex: 150,
-              fontFamily: "sans-serif",
-              fontSize: "min(2.5vh, 16px)",
-              fontWeight: "bold",
-              textAlign: "left",
-              textShadow: "0 2px 8px rgba(0,0,0,0.8)",
-              pointerEvents: "none",
+              bottom: "2vh",
+              left: "20px",
+              zIndex: 200,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: "8px",
             }}
           >
-            Score {score}/{totalCards}
-          </div>
-
-          {/* Exit button bottom-left */}
-          {onExit && (
-            <button
-              onClick={onExit}
+            {/* Sound toggle button */}
+            {onToggleSound && (
+              <button
+                onClick={onToggleSound}
+                style={{
+                  backgroundColor: "rgba(0, 0, 0, 0.75)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.3)",
+                  borderRadius: "999px",
+                  padding: "0.6rem 1rem",
+                  fontSize: "min(2.3vh, 14px)",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 10px rgba(0,0,0,0.4)",
+                  pointerEvents: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                {isSoundEnabled ? "🔊" : "🔇"} Sound
+              </button>
+            )}
+            
+            {/* Score display */}
+            <div
               style={{
-                position: "absolute",
-                bottom: "2vh",
-                left: "3vw",
                 backgroundColor: "rgba(0, 0, 0, 0.75)",
                 color: "white",
                 border: "1px solid rgba(255,255,255,0.3)",
                 borderRadius: "999px",
                 padding: "0.6rem 1.4rem",
+                fontFamily: "sans-serif",
                 fontSize: "min(2.3vh, 14px)",
                 fontWeight: 600,
-                zIndex: 200,
-                cursor: "pointer",
-                boxShadow: "0 4px 10px rgba(0,0,0,0.4)",
-                pointerEvents: "auto",
+                textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+                pointerEvents: "none",
               }}
             >
-              Exit Game
-            </button>
-          )}
+              Score {score}/{totalCards}
+            </div>
+
+            {/* Exit button */}
+            {onExit && (
+              <button
+                onClick={onExit}
+                style={{
+                  backgroundColor: "rgba(0, 0, 0, 0.75)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.3)",
+                  borderRadius: "999px",
+                  padding: "0.6rem 1.4rem",
+                  fontSize: "min(2.3vh, 14px)",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 10px rgba(0,0,0,0.4)",
+                  pointerEvents: "auto",
+                }}
+              >
+                Exit Game
+              </button>
+            )}
+          </div>
 
           {/* Streak indicator bottom-right */}
           <div
@@ -2526,31 +2395,7 @@ export function DrivingGameScene({
             </div>
           )}
 
-          {/* LARGE CENTER SCREEN FEEDBACK - Very visible feedback in the middle of screen */}
-          {(showCorrectFeedback || showIncorrectFeedback) && (
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 200,
-                textAlign: "center",
-                pointerEvents: "none",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "120px",
-                  textShadow: "0 0 20px #000, 0 0 10px #000, 0 0 5px #000",
-                  display: "block",
-                  opacity: 0.9,
-                }}
-              >
-                {showCorrectFeedback ? "✅" : "❌"}
-              </span>
-            </div>
-          )}
+          {/* Feedback is handled by toast notifications and other visual cues */}
         </>
       )}
 

@@ -297,7 +297,7 @@ export default function Home() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-8 relative">
+      <div className="text-center mb-8 relative max-w-3xl mx-auto">
         <div className="absolute top-0 right-0">
           <Dialog>
             <DialogTrigger asChild>

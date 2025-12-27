@@ -63,6 +63,66 @@ export const DEFAULT_MENU_ITEMS: MenuItem[] = [
   }
 ];
 
+export interface StudyModeItem {
+  id: string;
+  title: string;
+  description: string;
+  emojiIcon: string;
+  iconComponent: string;
+}
+
+export const DEFAULT_STUDY_MODE_ITEMS: StudyModeItem[] = [
+  {
+    id: 'flashcard',
+    title: 'Classic Flashcards',
+    description: 'Review cards one by one with traditional flashcard method',
+    emojiIcon: '🎴',
+    iconComponent: 'BookOpen'
+  },
+  {
+    id: 'driving-game',
+    title: 'Flash Hour',
+    description: 'Drive to the correct translations on the city roads!',
+    emojiIcon: '🚗',
+    iconComponent: 'Car'
+  },
+  {
+    id: 'multiple-choice',
+    title: 'Multiple Choice',
+    description: 'Test your knowledge with multiple choice questions',
+    emojiIcon: '🎯',
+    iconComponent: 'Target'
+  },
+  {
+    id: 'daily',
+    title: 'Daily Practice',
+    description: 'A curated set of cards for your daily learning routine',
+    emojiIcon: '📅',
+    iconComponent: 'Calendar'
+  },
+  {
+    id: 'time-attack',
+    title: 'Time Attack',
+    description: 'Answer as many cards as you can in 60 seconds!',
+    emojiIcon: '⏱️',
+    iconComponent: 'Clock'
+  },
+  {
+    id: 'sentence-builder',
+    title: 'Sentence Builder',
+    description: 'Build sentences by arranging words in the correct order',
+    emojiIcon: '🔧',
+    iconComponent: 'Zap'
+  },
+  {
+    id: 'grammar-lessons',
+    title: 'Grammar Lessons',
+    description: 'Learn grammar with AI-generated lessons and stories',
+    emojiIcon: '🎓',
+    iconComponent: 'BookOpen'
+  }
+];
+
 interface PreferencesState {
   hasCompletedOnboarding: boolean;
   useEmojiMode: boolean;
@@ -70,6 +130,7 @@ interface PreferencesState {
   hintCounters: HintCounter;
   currentHintIndex: number;
   menuItems: MenuItem[];
+  studyModeItems: StudyModeItem[];
   showAchievementNotifications: boolean;
   setLanguages: (languages: LanguagePreferences) => void;
   completeOnboarding: () => void;
@@ -78,6 +139,7 @@ interface PreferencesState {
   rotateHintIndex: () => void;
   shouldShowHint: (hintName: HintName) => boolean;
   updateMenuOrder: (newOrder: MenuItem[]) => void;
+  updateStudyModeOrder: (newOrder: StudyModeItem[]) => void;
   toggleAchievementNotifications: () => void;
 }
 
@@ -101,6 +163,7 @@ const getInitialState = () => {
   const savedAchievementNotifications = localStorage.getItem('showAchievementNotifications');
   const savedHintCounters = localStorage.getItem('hintCounters');
   const savedMenuItems = localStorage.getItem('menuItems');
+  const savedStudyModeItems = localStorage.getItem('studyModeItems');
   
   return {
     hasCompletedOnboarding: savedOnboarding === 'true',
@@ -119,6 +182,7 @@ const getInitialState = () => {
     },
     currentHintIndex: 0,
     menuItems: savedMenuItems ? JSON.parse(savedMenuItems) : DEFAULT_MENU_ITEMS,
+    studyModeItems: savedStudyModeItems ? JSON.parse(savedStudyModeItems) : DEFAULT_STUDY_MODE_ITEMS,
     showAchievementNotifications: savedAchievementNotifications !== 'false'
   };
 };
@@ -174,6 +238,11 @@ export const usePreferences = create<PreferencesState>((set, get) => ({
   updateMenuOrder: (newOrder) => {
     set({ menuItems: newOrder });
     localStorage.setItem('menuItems', JSON.stringify(newOrder));
+  },
+
+  updateStudyModeOrder: (newOrder) => {
+    set({ studyModeItems: newOrder });
+    localStorage.setItem('studyModeItems', JSON.stringify(newOrder));
   },
 
   toggleAchievementNotifications: () => set((state) => {

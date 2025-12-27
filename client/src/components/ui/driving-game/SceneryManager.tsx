@@ -1512,35 +1512,9 @@ export class SceneryManager {
         }
 
         const scroll = this.totalDistanceScrolledRef.current;
-        let recycledObjectsCount = 0;
-        const startUpdateTime = performance.now();
-
-        if (Math.random() < 0.001) {
-            console.log(
-                `SCENERY TRACKING: Total scroll distance ${scroll.toFixed(2)}`,
-            );
-        }
-
-        this.buildingInstances.forEach((instance, index) => {
+        this.buildingInstances.forEach((instance) => {
             if (instance.userData?.useDirectPositionUpdate) {
                 instance.group.position.z += currentSpeed || FORWARD_SPEED;
-
-                if (index === 0 && Math.random() < 0.002) {
-                    const threshold =
-                        instance.userData?.repositionThreshold ||
-                        REPOSITION_THRESHOLD_Z;
-                    const elementType =
-                        instance.userData?.type === "foliage"
-                            ? "TREE"
-                            : instance.userData?.type === "lightpost"
-                              ? "LIGHTPOST"
-                              : instance.userData?.type === "bench"
-                                ? "BENCH"
-                                : "BOARDWALK";
-                    console.log(
-                        `${elementType} TRACKING: First element at z=${instance.group.position.z.toFixed(2)}, threshold=${threshold} (custom=${instance.userData?.repositionThreshold ? "yes" : "no"})`,
-                    );
-                }
 
                 // Use custom threshold if available, otherwise use default
                 const threshold =
@@ -1548,37 +1522,20 @@ export class SceneryManager {
                     REPOSITION_THRESHOLD_Z;
 
                 if (instance.group.position.z > threshold) {
-                    const oldZ = instance.group.position.z;
-
                     // Determine how far back to reposition based on the type of object
                     let repositionDistance = ROAD_LOOP_DISTANCE;
 
                     // For objects that should be based on their count and spacing
                     if (instance.userData?.type === "foliage") {
-                        // For trees, we need to calculate the total span based on count and spacing
-                        const treeSpacing = 10.0; // Default tree spacing
+                        const treeSpacing = 10.0;
                         repositionDistance = NUM_TREES * treeSpacing;
                     } else if (instance.userData?.type === "lightpost") {
                         repositionDistance = NUM_LIGHTPOSTS * LIGHTPOST_SPACING;
                     } else if (instance.userData?.type === "bench") {
-                        // Benches use same pattern as lightposts
                         repositionDistance = NUM_LIGHTPOSTS * LIGHTPOST_SPACING;
                     }
 
                     instance.group.position.z -= repositionDistance;
-                    recycledObjectsCount++;
-
-                    const elementType =
-                        instance.userData?.type === "foliage"
-                            ? "TREE"
-                            : instance.userData?.type === "lightpost"
-                              ? "LIGHTPOST"
-                              : instance.userData?.type === "bench"
-                                ? "BENCH"
-                                : "BOARDWALK";
-                    console.log(
-                        `${elementType} LOOP: Element ${index % 10} recycled from z=${oldZ.toFixed(2)} to z=${instance.group.position.z.toFixed(2)} (threshold=${threshold})`,
-                    );
                 }
 
                 const distanceFromCamera = Math.abs(instance.group.position.z);
@@ -1604,8 +1561,6 @@ export class SceneryManager {
                     ((worldZ % loopDistance) + loopDistance) % loopDistance;
                 const finalZ = loopZ - loopDistance;
 
-                const oldZ = instance.group.position.z;
-
                 if (
                     instance.userData?.type === "fence" &&
                     typeof instance.userData?.relativeOffsetZ === "number"
@@ -1618,28 +1573,6 @@ export class SceneryManager {
                     instance.group.position.x = instance.initialX;
                 }
 
-                if (index === 0 && Math.random() < 0.001) {
-                    console.log(
-                        `SCENERY UPDATE: First building at z=${finalZ.toFixed(2)}, moved from ${oldZ.toFixed(2)}`,
-                    );
-
-                    const type = instance.userData?.buildingType || "standard";
-                    console.log(
-                        `SCENERY TYPE: ${type}, visible=${instance.group.visible}`,
-                    );
-                }
-
-                const bigPositionChange = Math.abs(oldZ - finalZ) > 50;
-                if (bigPositionChange) {
-                    recycledObjectsCount++;
-
-                    if (Math.random() < 0.1) {
-                        console.log(
-                            `SCENERY LOOP: ${instance.userData?.type || "Building"} recycled from z=${oldZ.toFixed(2)} to z=${finalZ.toFixed(2)}`,
-                        );
-                    }
-                }
-
                 const distanceFromCamera = Math.abs(finalZ);
                 const visibilityDistance =
                     instance.userData?.visibilityDistance ||
@@ -1647,38 +1580,18 @@ export class SceneryManager {
 
                 if (distanceFromCamera > visibilityDistance) {
                     if (instance.group.visible) {
-                        if (index < 3 && Math.random() < 0.1) {
-                            console.log(
-                                `SCENERY HIDE: ${instance.userData?.type || "scenery"} at distance=${distanceFromCamera.toFixed(2)} hidden (beyond ${visibilityDistance})`,
-                            );
-                        }
                         instance.group.visible = false;
                     }
                 } else {
                     if (!instance.group.visible) {
-                        if (index < 3 && Math.random() < 0.1) {
-                            console.log(
-                                `SCENERY SHOW: ${instance.userData?.type || "scenery"} at distance=${distanceFromCamera.toFixed(2)} shown (within ${visibilityDistance})`,
-                            );
-                        }
                         instance.group.visible = true;
                     }
                 }
             }
         });
-
-        if (recycledObjectsCount > 0) {
-            const updateTime = performance.now() - startUpdateTime;
-            console.log(
-                `RECYCLING EVENT: Moved ${recycledObjectsCount} objects, update took ${updateTime.toFixed(2)}ms`,
-            );
-        }
     }
 
     public dispose(): void {
-        console.log(
-            "SceneryManager: Dispose called. Scheduling delayed removal...",
-        );
         if (this.disposalTimeoutId) {
             clearTimeout(this.disposalTimeoutId);
             this.disposalTimeoutId = null;
@@ -1689,9 +1602,6 @@ export class SceneryManager {
         const UNIFIED_DISPOSE_TIMEOUT = 30000;
 
         this.disposalTimeoutId = setTimeout(() => {
-            console.log(
-                "SceneryManager: Executing delayed disposal for ALL scenery elements...",
-            );
             if (scene) {
                 const sceneryTypes = instancesToDispose.reduce(
                     (acc, instance) => {

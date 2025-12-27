@@ -822,24 +822,31 @@ Create an EXAM that:
 3. Includes 5-7 exercises that test different concepts from the previous lessons
 4. Uses simple beginner vocabulary suitable for their level
 5. Mixes concepts to test understanding
-6. Each exercise should have a translation in parentheses
+
+CRITICAL LANGUAGE RULES:
+- "story" field: Write the sentence in ${targetLanguageFullName} with ___ for blanks, then add the ${sourceLanguageFullName} translation in parentheses at the end
+- "explanation" fields: Write ALL explanations in ${sourceLanguageFullName}
+- The parentheses MUST contain ONLY ${sourceLanguageFullName}, never ${targetLanguageFullName}
 
 Return JSON only (no markdown formatting):
 {
   "title": "Exam: Review of Lessons 1-4",
-  "explanation": "This exam reviews all the concepts from your previous lessons...",
+  "explanation": "Exam explanation written in ${sourceLanguageFullName}...",
   "exercises": [
     {
-      "story": "Tôi ___ sinh viên. (I am a student.)",
-      "correctWordsForBlanks": ["là"],
-      "distractorWords": ["không", "phải", "có"],
-      "explanation": "Testing basic 'to be' structure from Lesson 1"
+      "story": "[sentence in ${targetLanguageFullName} with ___]. ([translation in ${sourceLanguageFullName}])",
+      "correctWordsForBlanks": ["correct_answer"],
+      "distractorWords": ["wrong1", "wrong2", "wrong3"],
+      "explanation": "Why this is correct, written in ${sourceLanguageFullName}"
     }
   ],
   "newWords": []
 }
 
-IMPORTANT: Create 5-7 exercises that test multiple concepts from previous lessons. Each exercise must include the translation in parentheses.` 
+IMPORTANT: 
+- Create 5-7 exercises that test multiple concepts from previous lessons
+- EVERY "story" MUST end with the ${sourceLanguageFullName} translation in parentheses
+- ALL explanations must be written in ${sourceLanguageFullName}` 
       : 
       `You are an AI language teacher. Create a structured grammar lesson for a user learning ${targetLanguageFullName} (native: ${sourceLanguageFullName}).
 
@@ -855,30 +862,33 @@ Create a NEW grammar lesson that:
 4. Provides multiple exercises to practice the concept
 5. Starts very basic and builds up gradually
 
+CRITICAL LANGUAGE RULES:
+- "story" field: Write the sentence in ${targetLanguageFullName} with ___ for blanks, then add the ${sourceLanguageFullName} translation in parentheses at the end
+- "explanation" fields: Write ALL explanations in ${sourceLanguageFullName}
+- "newWords" explanations: Write in ${sourceLanguageFullName}
+- The parentheses MUST contain ONLY ${sourceLanguageFullName}, never ${targetLanguageFullName}
+
 Return JSON only:
 {
-  "title": "Present Tense Conjugation",
+  "title": "Grammar concept title",
   "explanation": "Clear explanation of the grammar concept in ${sourceLanguageFullName}",
   "exercises": [
     {
-      "story": "Je ___ français. (I speak French.)",
-      "correctWordsForBlanks": ["parle"],
-      "distractorWords": ["parles", "parlent", "parlons"],
-      "explanation": "First person singular uses 'parle' ending"
-    },
-    {
-      "story": "Tu ___ anglais très bien. (You speak English very well.)",
-      "correctWordsForBlanks": ["parles"],
-      "distractorWords": ["parle", "parlent", "parlons"],
-      "explanation": "Second person singular uses 'parles' ending"
+      "story": "[sentence in ${targetLanguageFullName} with ___]. ([translation in ${sourceLanguageFullName}])",
+      "correctWordsForBlanks": ["correct_answer"],
+      "distractorWords": ["wrong1", "wrong2", "wrong3"],
+      "explanation": "Why this answer is correct, in ${sourceLanguageFullName}"
     }
   ],
   "newWords": [
-    { "text": "très", "explanation": "means 'very'" }
+    { "text": "word in ${targetLanguageFullName}", "explanation": "meaning in ${sourceLanguageFullName}" }
   ]
 }
 
-Create 3-5 exercises that progressively build the concept. Each exercise should be a short, practical sentence.`;
+IMPORTANT:
+- EVERY "story" MUST end with the ${sourceLanguageFullName} translation in parentheses
+- ALL explanations must be written in ${sourceLanguageFullName}
+- Create 3-5 exercises that progressively build the concept`;
 
     const requestBody = {
       contents: [{ parts: [{ text: prompt }] }],

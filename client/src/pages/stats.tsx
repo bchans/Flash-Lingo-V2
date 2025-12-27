@@ -308,11 +308,10 @@ export default function Stats() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center mb-6">
+      <div className="flex items-center mb-6 max-w-4xl mx-auto">
         <Link href="/">
-          <Button variant="ghost" size="sm" className="mr-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+          <Button variant="ghost" size="icon" className="mr-4">
+            <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
         <h1 className="text-3xl font-bold">{useEmojiMode ? '📊 ' : ''}Your Stats</h1>

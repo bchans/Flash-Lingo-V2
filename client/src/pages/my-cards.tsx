@@ -8,8 +8,9 @@ import { Link } from "wouter";
 import { usePreferences } from "@/lib/preferences-simple";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Scenarios from "./scenarios";
+import Lessons from "./lessons";
 
-type Tab = "flashcards" | "scenarios";
+type Tab = "flashcards" | "scenarios" | "lessons";
 
 export default function MyCards() {
   const [activeTab, setActiveTab] = useState<Tab>("flashcards");
@@ -266,7 +267,7 @@ export default function MyCards() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center mb-6">
+      <div className="flex items-center mb-6 max-w-4xl mx-auto">
         <Link href="/">
           <Button variant="ghost" size="icon" className="mr-4">
             <ArrowLeft className="h-5 w-5" />
@@ -275,7 +276,7 @@ export default function MyCards() {
         <h1 className="text-3xl font-bold">{useEmojiMode ? '📚 ' : ''}My Cards</h1>
       </div>
 
-      <div className="flex border-b mb-6">
+      <div className="flex border-b mb-6 max-w-4xl mx-auto">
         <Button
           variant={activeTab === "flashcards" ? "secondary" : "ghost"}
           onClick={() => setActiveTab("flashcards")}
@@ -290,11 +291,18 @@ export default function MyCards() {
         >
           Scenarios
         </Button>
+        <Button
+          variant={activeTab === "lessons" ? "secondary" : "ghost"}
+          onClick={() => setActiveTab("lessons")}
+          className="rounded-b-none"
+        >
+          Lessons
+        </Button>
       </div>
 
       {activeTab === 'flashcards' && (
         <>
-          <div className="flex flex-wrap gap-2 mb-6 p-4 bg-muted/50 rounded-lg">
+          <div className="flex flex-wrap gap-2 mb-6 p-4 bg-muted/50 rounded-lg max-w-4xl mx-auto">
             <Button
               variant="outline"
               size="sm"
@@ -433,6 +441,8 @@ export default function MyCards() {
       )}
 
       {activeTab === 'scenarios' && <Scenarios />}
+
+      {activeTab === 'lessons' && <Lessons />}
     </div>
   );
 }

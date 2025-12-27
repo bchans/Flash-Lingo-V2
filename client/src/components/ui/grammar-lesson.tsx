@@ -39,6 +39,8 @@ export function GrammarLesson({ lesson, onComplete, onSuccess }: GrammarLessonPr
   const [addingWordIds, setAddingWordIds] = useState<Set<number>>(new Set());
   const [shuffledOptions, setShuffledOptions] = useState<string[]>([]);
   const [lastShuffleKey, setLastShuffleKey] = useState('');
+  const [completedExercises, setCompletedExercises] = useState(0);
+  const [isLessonComplete, setIsLessonComplete] = useState(false);
   const { toast } = useToast();
   const { languages } = usePreferences();
 
@@ -79,11 +81,15 @@ export function GrammarLesson({ lesson, onComplete, onSuccess }: GrammarLessonPr
         setCurrentBlankIndex(currentBlankIndex + 1);
       } else if (currentExerciseIndex < lesson.exercises.length - 1) {
         // Move to next exercise
+        setCompletedExercises(currentExerciseIndex + 1);
         setCurrentExerciseIndex(currentExerciseIndex + 1);
         setCurrentBlankIndex(0);
         setUserAnswers([]);
       } else {
-        // Completed all exercises - call success directly without results step
+        // Completed all exercises - mark as fully complete and keep buttons locked
+        setCompletedExercises(lesson.exercises.length);
+        setIsLessonComplete(true);
+        // Call success after a short delay to show the final correct answer
         setTimeout(async () => {
           if (onSuccess) {
             await onSuccess(lesson.title, lesson.exercises.length, (lesson as any).id);
@@ -93,7 +99,7 @@ export function GrammarLesson({ lesson, onComplete, onSuccess }: GrammarLessonPr
             }
             onComplete();
           }
-        }, 1000); // Short delay to show the final correct answer
+        }, 1000);
       }
     }, 1000);
   };
@@ -371,11 +377,11 @@ export function GrammarLesson({ lesson, onComplete, onSuccess }: GrammarLessonPr
             </div>
           )}
 
-          {/* Progress bar - shows completed questions (0% at start, fills to 100% on last answer) */}
+          {/* Progress bar - shows completed exercises */}
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
               className="bg-green-500 h-2 rounded-full transition-all duration-300" 
-              style={{ width: `${selectedAnswer && currentExerciseIndex === lesson.exercises.length - 1 && currentBlankIndex === currentExercise.correctWordsForBlanks.length - 1 ? 100 : (currentExerciseIndex / lesson.exercises.length) * 100}%` }}
+              style={{ width: `${(completedExercises / lesson.exercises.length) * 100}%` }}
             ></div>
           </div>
 
@@ -402,7 +408,7 @@ export function GrammarLesson({ lesson, onComplete, onSuccess }: GrammarLessonPr
                       : 'opacity-60'
                   }`}
                   onClick={() => handleAnswer(option)}
-                  disabled={!!selectedAnswer}
+                  disabled={!!selectedAnswer || isLessonComplete}
                 >
                   {option}
                 </Button>

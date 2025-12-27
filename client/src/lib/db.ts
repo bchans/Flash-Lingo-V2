@@ -415,3 +415,11 @@ export async function saveGrammarLesson(lesson: InsertGrammarLesson) {
 export async function getGrammarLessons() {
   return await db.grammarLessons.toArray();
 }
+
+export async function deleteGrammarLesson(id: number) {
+  return await db.grammarLessons.delete(id);
+}
+
+export async function updateGrammarLesson(id: number, lesson: Partial<GrammarLesson>) {
+  return await db.grammarLessons.update(id, lesson);
+}

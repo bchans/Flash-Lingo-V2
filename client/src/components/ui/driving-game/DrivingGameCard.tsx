@@ -8,8 +8,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useDeviceDetection } from '@/hooks/use-device-detection';
 import { DrivingGameScene } from './DrivingGameScene';
 import { RevolvingCar } from './RevolvingCar';
-import { updateCard, getCards } from '@/lib/db';
+import { updateCard, getCachedAudio, saveCardAudio } from '@/lib/db';
 import { useAchievement } from '@/lib/achievement-context';
+import { checkForNewAchievements } from '@/lib/achievements';
+import { firebaseAPI } from '@/lib/firebase-api';
+import { base64ToAudio, audioToBase64 } from '@/lib/api';
 import type { Card as CardType } from "@shared/schema";
 // Import CSS for fullscreen mode
 import './driving-game.css';
@@ -27,7 +30,7 @@ export function DrivingGameCard({
   onWrongAnswer,
   onSessionComplete
 }: DrivingGameCardProps) {
-  const STREAK_SPEED_INCREMENT = 0.05;
+  const STREAK_SPEED_INCREMENT = 0.10; // 10% speed increase per correct answer in streak
   const [currentIndex, setCurrentIndex] = useState(0);
   const [shuffledCards, setShuffledCards] = useState<CardType[]>([]);
   const [score, setScore] = useState(0);
@@ -38,30 +41,79 @@ export function DrivingGameCard({
   const [gameStarted, setGameStarted] = useState(false);
   const { toast } = useToast();
   
-  // Car unlock achievement check
-  async function checkCarUnlockAchievements() {
+  // Sound toggle state - persisted in localStorage
+  const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
+    return localStorage.getItem('drivingGameSound') === 'true';
+  });
+  
+  const toggleSound = () => {
+    setIsSoundEnabled(prev => {
+      const newValue = !prev;
+      localStorage.setItem('drivingGameSound', newValue.toString());
+      return newValue;
+    });
+  };
+  
+  // Check for all achievements (including car unlocks)
+  async function checkAllAchievements() {
     try {
-      const allCards = await getCards();
-      const learnedCount = allCards.filter(card => card.learned).length;
-      
-      const carAchievements = [
-        { count: 10, carName: 'Delivery Car', id: 'unlock-delivery-car' },
-        { count: 20, carName: 'Ambulance', id: 'unlock-ambulance' },
-        { count: 40, carName: 'Police Car', id: 'unlock-police-car' },
-        { count: 80, carName: 'Racing Car', id: 'unlock-racing-car' },
-        { count: 160, carName: 'Vintage Car', id: 'unlock-vintage-car' }
-      ];
-      
-      const achievement = carAchievements.find(ach => ach.count === learnedCount);
-      if (achievement) {
+      const newAchievements = await checkForNewAchievements();
+      for (const achievement of newAchievements) {
         showAchievement({
           id: achievement.id,
-          name: `${achievement.carName} Unlocked!`,
-          description: `Master ${achievement.count} cards to unlock this vehicle`
+          name: achievement.name,
+          description: achievement.description
         });
       }
     } catch (error) {
-      console.error('Error checking car unlock achievements:', error);
+      console.error('Error checking achievements:', error);
+    }
+  }
+  
+  // Language code conversion for TTS
+  const convertToLanguageCode = (lang: string): string => {
+    const langMap: { [key: string]: string } = {
+      'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE', 'it': 'it-IT',
+      'pt': 'pt-PT', 'ja': 'ja-JP', 'ko': 'ko-KR', 'zh': 'zh-CN', 'vi': 'vi-VN',
+      'th': 'th-TH', 'ru': 'ru-RU', 'ar': 'ar-XA', 'hi': 'hi-IN', 'pl': 'pl-PL',
+      'nl': 'nl-NL', 'sv': 'sv-SE', 'da': 'da-DK', 'fi': 'fi-FI', 'no': 'nb-NO',
+      'tr': 'tr-TR', 'el': 'el-GR', 'he': 'he-IL', 'id': 'id-ID', 'ms': 'ms-MY',
+    };
+    return langMap[lang] || lang;
+  };
+  
+  // Play audio for correct answer
+  async function playCardAudio(card: CardType) {
+    if (!isSoundEnabled) return;
+    
+    try {
+      // Check for cached audio first
+      const cachedAudio = await getCachedAudio(card.id);
+      
+      if (cachedAudio.target) {
+        // Use cached audio
+        const audioUrl = base64ToAudio(cachedAudio.target);
+        const audio = new Audio(audioUrl);
+        audio.play().catch(err => console.error('Audio playback failed:', err));
+        audio.addEventListener('ended', () => URL.revokeObjectURL(audioUrl));
+      } else {
+        // Generate new audio using Google Cloud TTS
+        const languageCode = convertToLanguageCode(card.targetLang || 'en');
+        const audioBlob = await firebaseAPI.generateTTS(card.targetText, languageCode);
+        
+        if (audioBlob) {
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audio.play().catch(err => console.error('Audio playback failed:', err));
+          audio.addEventListener('ended', () => URL.revokeObjectURL(audioUrl));
+          
+          // Cache for future use
+          const base64Audio = await audioToBase64(audioBlob);
+          await saveCardAudio(card.id, undefined, base64Audio);
+        }
+      }
+    } catch (error) {
+      console.error('Error playing card audio:', error);
     }
   }
   
@@ -202,9 +254,14 @@ export function DrivingGameCard({
   }, [shouldUseMobileOverlay]);
 
   // Shuffle cards on component mount - only for initial setup, not for game mode filtering
+  // Filter out sentence-type cards as they don't fit well on highway signs
   useEffect(() => {
     if (cards.length > 0 && shuffledCards.length === 0) {
-      const shuffled = shuffle([...cards]);
+      // Filter out sentence-type cards
+      const wordCards = cards.filter(card => card.type !== 'sentence');
+      // If no word cards available, fall back to all cards
+      const cardsToUse = wordCards.length > 0 ? wordCards : cards;
+      const shuffled = shuffle([...cardsToUse]);
       setShuffledCards(shuffled);
       setupNewQuestion(shuffled[0]);
     }
@@ -264,9 +321,9 @@ export function DrivingGameCard({
     try {
       await updateCard(currentCard.id, { ...currentCard, learned: isCorrect });
       
-      // Check for car unlock achievements after updating card
+      // Check for all achievements after updating card
       if (isCorrect) {
-        await checkCarUnlockAchievements();
+        await checkAllAchievements();
       }
     } catch (error) {
       console.error('Error updating card status:', error);
@@ -283,6 +340,9 @@ export function DrivingGameCard({
       });
       onCorrectAnswer(currentCard.id);
       console.log(`SCORE UPDATE: Correct answer! Score: ${newScore}/${shuffledCards.length}`);
+      
+      // Play audio for the correct card if sound is enabled
+      playCardAudio(currentCard);
       
       toast({
         title: "Correct!",
@@ -381,10 +441,14 @@ export function DrivingGameCard({
   function startGame() {
     console.log("Starting Driving Game...");
     
-    // Filter cards based on selected mode
-    const filteredCards = selectedMode.filterCards(cards);
+    // Filter cards based on selected mode, then exclude sentences (they don't fit on highway signs)
+    const modeFilteredCards = selectedMode.filterCards(cards);
+    const filteredCards = modeFilteredCards.filter(card => card.type !== 'sentence');
     
-    if (filteredCards.length === 0) {
+    // If no word cards available after filtering, fall back to mode-filtered cards
+    const cardsToUse = filteredCards.length > 0 ? filteredCards : modeFilteredCards;
+    
+    if (cardsToUse.length === 0) {
       toast({
         title: "No cards available",
         description: selectedMode.id === 'unknown' 
@@ -396,7 +460,7 @@ export function DrivingGameCard({
     }
     
     // Shuffle filtered cards for game session
-    const shuffled = shuffle([...filteredCards]);
+    const shuffled = shuffle([...cardsToUse]);
     setShuffledCards(shuffled);
     setCurrentIndex(0);
     setScore(0);
@@ -647,9 +711,9 @@ export function DrivingGameCard({
               onClick={startGame}
               size="lg"
               className="w-full"
-              disabled={selectedMode.filterCards(cards).length === 0}
+              disabled={selectedMode.filterCards(cards).filter(c => c.type !== 'sentence').length === 0}
             >
-              Start Driving ({selectedMode.filterCards(cards).length} cards)
+              Start Driving ({selectedMode.filterCards(cards).filter(c => c.type !== 'sentence').length} cards)
             </Button>
           </div>
         </CardContent>
@@ -657,8 +721,8 @@ export function DrivingGameCard({
     );
   }
 
-  // Show loading screen
-  if (showLoadingScreen && gameStarted) {
+  // Show loading screen - show as soon as showLoadingScreen is true (don't wait for gameStarted)
+  if (showLoadingScreen) {
     console.log("RENDERING PATH: Loading screen with score containers", {
       showLoadingScreen,
       gameStarted,
@@ -701,6 +765,8 @@ export function DrivingGameCard({
               selectedCarIndex={selectedCarIndex}
               streakSpeedMultiplier={streakSpeedMultiplier}
               currentStreak={streakCount}
+              isSoundEnabled={isSoundEnabled}
+              onToggleSound={toggleSound}
             />
           </div>
         </CardContent>
@@ -816,6 +882,8 @@ export function DrivingGameCard({
                   selectedCarIndex={selectedCarIndex}
                   streakSpeedMultiplier={streakSpeedMultiplier}
                   currentStreak={streakCount}
+                  isSoundEnabled={isSoundEnabled}
+                  onToggleSound={toggleSound}
                 />
                 
                 {/* Touch control areas for mobile */}
@@ -841,7 +909,19 @@ export function DrivingGameCard({
     );
   }
   
-  // Fallback for empty card set
+  // Fallback for empty card set - only show if cards have been loaded but are empty
+  // If cards array is empty, it might still be loading from the parent
+  if (cards.length === 0) {
+    return (
+      <Card className="w-full">
+        <CardContent className="p-6 text-center">
+          <p className="text-muted-foreground">Loading cards...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Final fallback - shouldn't normally reach here
   return (
     <Card className="w-full">
       <CardContent className="p-6 text-center">
