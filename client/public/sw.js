@@ -1,7 +1,7 @@
 // Maximum aggressive caching Service Worker for FlashLingo
 // This will cache EVERYTHING from our origin for offline use
 
-const CACHE_NAME = 'flashlingo-v18';
+const CACHE_NAME = 'flashlingo-v19';
 const BASE_PATH = '/Flash-Lingo-V2';
 
 // The main assets to precache (only files that actually exist)

@@ -17,20 +17,48 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     
-    <!-- App icons -->
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="icon" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- App icons - dynamically set via script to support any base path -->
+    <link rel="manifest" id="manifest-link" />
+    <link rel="icon" type="image/svg+xml" id="icon-link" />
+    <link rel="apple-touch-icon" id="apple-icon-link" />
     
     <!-- iOS splash screens -->
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 768px) and (max-device-width: 1024px)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 834px) and (max-device-width: 834px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/icon-512.svg" media="(min-device-width: 1024px) and (max-device-width: 1024px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(min-device-width: 768px) and (max-device-width: 1024px)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(min-device-width: 834px) and (max-device-width: 834px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" class="splash-link" data-icon="icon-512.svg" media="(min-device-width: 1024px) and (max-device-width: 1024px) and (-webkit-device-pixel-ratio: 2)" />
+    
+    <!-- Script to set paths dynamically (must be after link elements) -->
+    <script>
+      // Dynamically set icon and manifest paths to work with any base URL
+      (function() {
+        // Detect base path from current URL
+        var base = '/';
+        var pathname = window.location.pathname;
+        
+        // Check if we're on the Flash-Lingo-V2 path
+        if (pathname.startsWith('/Flash-Lingo-V2')) {
+          base = '/Flash-Lingo-V2/';
+        }
+        
+        // Set the manifest and icon paths
+        document.getElementById('manifest-link').href = base + 'manifest.json';
+        document.getElementById('icon-link').href = base + 'icon.svg';
+        document.getElementById('apple-icon-link').href = base + 'icon.svg';
+        
+        // Set iOS splash screen links
+        var splashLinks = document.querySelectorAll('.splash-link');
+        for (var j = 0; j < splashLinks.length; j++) {
+          splashLinks[j].href = base + splashLinks[j].getAttribute('data-icon');
+        }
+        
+        // Store base for later use
+        window.__APP_BASE_PATH__ = base;
+      })();
+    </script>
     
     <title>FlashLingo | Language Learning App</title>
   </head>
