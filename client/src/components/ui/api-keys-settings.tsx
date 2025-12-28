@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Eye, EyeOff, Key, Download, Upload, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Key, Download, Upload, CheckCircle2, RefreshCw } from 'lucide-react';
 import { getAPIKeys, saveAPIKeys, exportAPIKeys, importAPIKeys, type APIKeys } from '@/lib/api-keys';
 import { initializeFirebase } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +22,7 @@ export function APIKeysSettings() {
     mistral: false
   });
   const [saved, setSaved] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -112,6 +113,61 @@ export function APIKeysSettings() {
 
   const toggleShowKey = (keyType: 'gemini' | 'firebase' | 'mistral') => {
     setShowKeys(prev => ({ ...prev, [keyType]: !prev[keyType] }));
+  };
+
+  const handleCheckForUpdate = async () => {
+    if (!('serviceWorker' in navigator)) {
+      toast({
+        title: "Not Supported",
+        description: "Service workers are not supported in this browser.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCheckingUpdate(true);
+    
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.update();
+      
+      // Check if there's a new service worker waiting or installing
+      if (registration.waiting) {
+        toast({
+          title: "Update Available!",
+          description: "A new version is ready. Reloading to apply update...",
+        });
+        // Tell the waiting SW to skip waiting and activate
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        // Reload after a short delay
+        setTimeout(() => window.location.reload(), 1000);
+      } else if (registration.installing) {
+        toast({
+          title: "Update Installing",
+          description: "A new version is being installed. Please wait...",
+        });
+        // Wait for installation to complete then reload
+        registration.installing.addEventListener('statechange', (e) => {
+          if ((e.target as ServiceWorker).state === 'installed') {
+            setTimeout(() => window.location.reload(), 1000);
+          }
+        });
+      } else {
+        toast({
+          title: "Up to Date",
+          description: "You're running the latest version of FlashLingo!",
+        });
+      }
+    } catch (error) {
+      console.error('Update check failed:', error);
+      toast({
+        title: "Update Check Failed",
+        description: "Could not check for updates. Make sure you're online.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
   };
 
   return (
@@ -270,6 +326,26 @@ export function APIKeysSettings() {
             This allows you to restore everything on a new device.
           </AlertDescription>
         </Alert>
+
+        {/* App Update Section */}
+        <div className="pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-medium">App Updates</h4>
+              <p className="text-sm text-muted-foreground">
+                Check for and install the latest version
+              </p>
+            </div>
+            <Button 
+              onClick={handleCheckForUpdate} 
+              variant="outline"
+              disabled={isCheckingUpdate}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

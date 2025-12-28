@@ -78,18 +78,18 @@ const getResponsiveSignConfig = () => {
   
   if (isMobile) {
     return {
-      height: 6, // 6vh for mobile - smaller to fit screen
-      fontSize: 'clamp(10px, 2.5vh, 18px)', // Smaller on mobile
-      minWidth: '18vw', // Smaller minimum width
-      maxWidth: '40vw', // Never exceed 40% of screen width
-      padding: '0.8vh 1.5vw'
+      height: 10, // 10vh for mobile - larger for better readability
+      fontSize: 'clamp(14px, 4vh, 24px)', // Larger font on mobile
+      minWidth: '22vw', // Wider minimum width
+      maxWidth: '42vw', // Slightly larger max width
+      padding: '1vh 2vw'
     };
   } else if (isTablet) {
     return {
-      height: 7, // 7vh for tablet
-      fontSize: 'clamp(12px, 2.5vh, 22px)',
-      minWidth: '12vw',
-      maxWidth: '35vw', // Smaller max width
+      height: 8, // 8vh for tablet
+      fontSize: 'clamp(14px, 3vh, 24px)',
+      minWidth: '14vw',
+      maxWidth: '35vw',
       padding: '1vh 1.5vw'
     };
   } else if (isLargeDesktop) {
@@ -1490,7 +1490,7 @@ export function DrivingGameScene({
     const gltfLoader = new GLTFLoader();
     const textureLoader = new THREE.TextureLoader();
     const modelPath = CAR_MODELS[selectedCarIndex];
-    const paletteTexturePath = "/textures/kenney_car_palette.png";
+    const paletteTexturePath = getAssetUrl("textures/kenney_car_palette.png");
     console.log("CAR: Loading model...");
 
     gltfLoader.load(

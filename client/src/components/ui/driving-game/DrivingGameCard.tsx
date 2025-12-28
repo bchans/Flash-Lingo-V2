@@ -186,6 +186,28 @@ export function DrivingGameCard({
   // Device detection
   const { isMobile } = useDeviceDetection();
   
+  // Landscape detection for mobile
+  const [isLandscape, setIsLandscape] = useState(false);
+  
+  useEffect(() => {
+    if (!isMobile) return;
+    
+    const checkOrientation = () => {
+      // Check if we're in landscape mode on mobile
+      const isLandscapeMode = window.innerWidth > window.innerHeight;
+      setIsLandscape(isLandscapeMode);
+    };
+    
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, [isMobile]);
+  
   // Show feedback state
   const [showFeedback, setShowFeedback] = useState<{ isCorrect: boolean } | null>(null);
   
@@ -569,6 +591,55 @@ export function DrivingGameCard({
       setIsFullscreen(false);
       container.classList.remove('fullscreen-game');
     }
+  }
+
+  // Show rotate screen overlay for mobile landscape
+  if (isMobile && isLandscape && gameStarted) {
+    return (
+      <div 
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10000,
+          backgroundColor: '#000',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '24px',
+          padding: '20px',
+        }}
+      >
+        <div 
+          style={{
+            fontSize: '80px',
+            animation: 'rotate-phone 1.5s ease-in-out infinite',
+          }}
+        >
+          📱
+        </div>
+        <div style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center' }}>
+          Please Rotate Your Phone
+        </div>
+        <div style={{ color: '#aaa', fontSize: '16px', textAlign: 'center', maxWidth: '300px' }}>
+          This game works best in portrait mode. Please rotate your device to continue playing.
+        </div>
+        <Button 
+          onClick={handleExitGame}
+          variant="outline"
+          style={{ marginTop: '20px' }}
+        >
+          Exit Game
+        </Button>
+        <style>{`
+          @keyframes rotate-phone {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-30deg); }
+            75% { transform: rotate(30deg); }
+          }
+        `}</style>
+      </div>
+    );
   }
 
   // Handle intro screen
