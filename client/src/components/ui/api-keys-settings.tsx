@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Eye, EyeOff, Key, Download, Upload, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Download, Upload, CheckCircle2, RefreshCw } from 'lucide-react';
 import { getAPIKeys, saveAPIKeys, exportAPIKeys, importAPIKeys, type APIKeys } from '@/lib/api-keys';
 import { initializeFirebase } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -171,18 +170,8 @@ export function APIKeysSettings() {
   };
 
   return (
-    <Card className="w-full max-w-3xl mx-auto">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Key className="h-6 w-6" />
-          <CardTitle>API Keys Configuration</CardTitle>
-        </div>
-        <CardDescription>
-          Manage your API keys for AI-powered features. Your keys are stored locally and never sent to our servers.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <Alert>
+    <div className="space-y-6">
+      <Alert>
           <AlertDescription>
             🔒 <strong>Privacy:</strong> All API keys are stored only on your device in local storage.
             You can export and import them between devices.
@@ -346,8 +335,7 @@ export function APIKeysSettings() {
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 

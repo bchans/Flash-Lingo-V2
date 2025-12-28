@@ -553,31 +553,25 @@ export function DrivingGameCard({
       setIsFullscreen(true);
       container.classList.add('fullscreen-game');
       
-      // On mobile, always use document.documentElement and force landscape orientation
-      const elementToFullscreen = isMobile ? document.documentElement : container;
-      
-      // Lock orientation to landscape on mobile
-      if (isMobile && screen.orientation && 'lock' in screen.orientation) {
-        try {
-          (screen.orientation as any).lock('landscape').catch((err: any) => {
-            console.log("Orientation lock failed:", err);
-          });
-        } catch (err) {
-          console.log("Orientation lock not supported:", err);
-        }
+      // On mobile, we use the CSS overlay approach instead of fullscreen API
+      // This avoids issues with orientation lock and keeps the game in portrait mode
+      if (isMobile) {
+        // Just focus the container - the mobile overlay CSS handles the rest
+        container.focus();
+        return;
       }
       
-      // Request actual fullscreen API for true fullscreen with proper typing
-      if (elementToFullscreen.requestFullscreen) {
-        elementToFullscreen.requestFullscreen().catch((err) => {
+      // On desktop, use the fullscreen API
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch((err) => {
           console.log("Fullscreen request failed:", err);
         });
-      } else if ((elementToFullscreen as any).webkitRequestFullscreen) {
+      } else if ((container as any).webkitRequestFullscreen) {
         // Safari compatibility
-        (elementToFullscreen as any).webkitRequestFullscreen();
-      } else if ((elementToFullscreen as any).mozRequestFullScreen) {
+        (container as any).webkitRequestFullscreen();
+      } else if ((container as any).mozRequestFullScreen) {
         // Firefox compatibility
-        (elementToFullscreen as any).mozRequestFullScreen();
+        (container as any).mozRequestFullScreen();
       }
       
       // Focus the container to ensure keyboard events work
